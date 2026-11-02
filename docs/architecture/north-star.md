@@ -57,8 +57,8 @@ Rules that fall out of this, and are not negotiable later:
 
 - **Balance is always the sum of an account's entry effects.** No stored
   balance field, no special cases.
-- **Credit balances are stored signed.** A card owing $240 has balance
-  `-24000`. Display flips the sign and says "owed".
+- **Credit balances are negative by convention.** A card owing $240 has a
+  derived balance of `-24000`. Display flips the sign and says "owed".
 - **Spending totals count expenses only.** Transfers, openings, and income
   never appear in a category total. Paying a card is not spending.
 - **A transfer is one row**, with `fromAccountId` and `toAccountId`, so it

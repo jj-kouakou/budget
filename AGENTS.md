@@ -1,7 +1,12 @@
 # AGENTS.md
 
+## Stack
+TypeScript + React + Vite, Dexie (IndexedDB), `vite-plugin-pwa`, Vitest +
+React Testing Library. Pinned by `docs/adr/0001` and `0005`.
+
 ## Project doc layout
-- `docs/standards.md` — scoped index of applicable coding-convention rules (**pending: stack not chosen**)
+- `docs/standards.md` — scoped index of applicable coding-convention rules
+  (plugin v1.2.0 + OMP `rule://ts-*` corpus)
 - `docs/product/` — `vision.md`, `backlog.md`, `slices/`
 - `docs/architecture/` — `north-star.md` (whole-product, light), `slices/` (per-slice, extends north-star)
 - `docs/program-design/` — `slices/` (spec + tickets per slice)
