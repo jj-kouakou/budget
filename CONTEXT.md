@@ -42,3 +42,13 @@ _Avoid_: Tag, label, bucket
 What an account currently holds, derived from its entries. For a credit card,
 the amount owed.
 _Avoid_: Total, amount, current value
+
+**Opening balance**:
+The balance an account had when it was added to the ledger. Recorded as an
+entry dated the account's creation date, never as a field on the account.
+_Avoid_: Starting amount, initial balance
+
+**Spending**:
+The sum of expenses in a period. Excludes income, transfers, and opening
+balances.
+_Avoid_: Outflow, total spent, burn
