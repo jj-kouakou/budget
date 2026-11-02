@@ -1,0 +1,21 @@
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+
+# Dependencies / build output (extend once the stack is chosen)
+node_modules/
+dist/
+build/
+.venv/
+__pycache__/
+*.py[cod]
+
+# OS / editor junk
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# Local scratch
+.scratch/
