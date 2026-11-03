@@ -1434,7 +1434,7 @@ model, and deployed from `master` through the GitHub Pages Actions workflow in
   preselection, credit-card spending, and backdated month routing all verified.
 - **Service worker:** registered at scope `/budget/`; Workbox precache active.
 - **Deploy:** https://jj-kouakou.github.io/budget/ served over HTTPS with
-  `base: '/budget/'`.
+  `base: '/budget/'`; GitHub Actions run `41561806833` built and deployed it.
 
 Verification limits from the build machine: iOS home-screen install, Android
 storage eviction, `navigator.storage.persist()` grants, the literal
