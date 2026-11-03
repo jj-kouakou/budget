@@ -194,9 +194,26 @@ not the plugin; no `rule://` rule is `ts-test-*`/`ts-design-*`-prefixed.
 
 ### Project-specific conventions — from src/
 
-None yet — no `src/` code at time of writing (`src/` contains only `.gitkeep`).
-This section is regenerated from actual code at the first review and is never
-cached across projects.
+Read from the Slice 1 implementation at the first review. These are repo
+conventions, not cached skill rules.
+
+- `pj-ledger-seam` — UI modules import `data/ledger` only; no UI module
+  imports `data/db` or `dexie`. Tests cross the same `createLedger` seam.
+- `pj-ledger-error-codes` — ledger failures throw `LedgerError` with a
+  `LedgerErrorCode`; UI maps codes to copy, and tests assert codes rather than
+  message text.
+- `pj-domain-pure` — `domain/` modules import only `domain/types`; no
+  `data/` or `app/` imports.
+- `pj-integer-minor-units` — amounts are integer minor units; parsing and
+  formatting live in `domain/money`, and formatting happens only at the UI
+  edge.
+- `pj-local-calendar` — ledger dates are local `YYYY-MM-DD` and months are
+  `YYYY-MM`; no UTC or `Date.parse` in domain validation.
+- `pj-real-indexeddb-tests` — ledger and UI tests use a real `BudgetDatabase`
+  on `fake-indexeddb` with a unique name, deleted in `afterEach`; no mock
+  ledger or Dexie internals.
+- `pj-account-type-labels` — account type display copy comes from
+  `app/labels.ts`; screens do not re-declare it.
 
 ## Not applicable (different stack)
 
