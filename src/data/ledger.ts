@@ -65,6 +65,19 @@ export interface Ledger {
   getSettings(): Promise<Settings>;
 }
 
+const MAX_ACCOUNT_NAME_LENGTH = 60;
+
+function requireAccountName(name: string): string {
+  const trimmed = name.trim();
+  if (trimmed.length === 0 || trimmed.length > MAX_ACCOUNT_NAME_LENGTH) {
+    throw new LedgerError(
+      'invalid-name',
+      'Enter an account name of 60 characters or fewer.',
+    );
+  }
+  return trimmed;
+}
+
 export function createLedger(db: BudgetDatabase): Ledger {
   return {
     async initialize() {
@@ -88,19 +101,58 @@ export function createLedger(db: BudgetDatabase): Ledger {
     },
 
     async listAccounts() {
-      throw new Error('not implemented');
+      const accounts = await db.accounts.toArray();
+      return accounts.sort(
+        (left, right) =>
+          left.createdAt.localeCompare(right.createdAt) ||
+          left.id.localeCompare(right.id),
+      );
     },
 
-    async addAccount() {
-      throw new Error('not implemented');
+    async addAccount(input) {
+      const name = requireAccountName(input.name);
+      if (
+        input.type !== 'checking' &&
+        input.type !== 'savings' &&
+        input.type !== 'credit'
+      ) {
+        throw new LedgerError(
+          'invalid-account-type',
+          'Choose a valid account type.',
+        );
+      }
+
+      const account: Account = {
+        id: crypto.randomUUID(),
+        name,
+        type: input.type,
+        createdAt: new Date().toISOString(),
+      };
+
+      await db.transaction('rw', db.accounts, async () => {
+        await db.accounts.add(account);
+      });
+
+      return account;
     },
 
-    async renameAccount() {
-      throw new Error('not implemented');
+    async renameAccount(id, name) {
+      const trimmed = requireAccountName(name);
+      await db.transaction('rw', db.accounts, async () => {
+        const updated = await db.accounts.update(id, { name: trimmed });
+        if (updated === 0) {
+          throw new LedgerError('unknown-account', 'That account no longer exists.');
+        }
+      });
     },
 
     async listCategories() {
-      throw new Error('not implemented');
+      const categories = await db.categories.toArray();
+      return categories.sort(
+        (left, right) =>
+          left.name.localeCompare(right.name) ||
+          left.id.localeCompare(right.id),
+      );
     },
 
     async addExpense() {
@@ -112,7 +164,11 @@ export function createLedger(db: BudgetDatabase): Ledger {
     },
 
     async getSettings() {
-      throw new Error('not implemented');
+      const settings = await db.settings.get('app');
+      if (!settings) {
+        throw new Error('Ledger not initialized');
+      }
+      return settings;
     },
   };
 }
