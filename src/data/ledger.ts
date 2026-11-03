@@ -216,8 +216,58 @@ export function createLedger(db: BudgetDatabase): Ledger {
       );
     },
 
-    async monthSummary() {
-      throw new Error('not implemented');
+    async monthSummary(month) {
+      if (!isValidMonthKey(month)) {
+        throw new RangeError('Invalid month key');
+      }
+
+      const entries = await db.entries
+        .where('date')
+        .startsWith(month)
+        .toArray();
+
+      const totals = new Map<string, number>();
+      for (const entry of entries) {
+        if (entry.kind !== 'expense') {
+          continue;
+        }
+        const categoryId = entry.categoryId ?? '__uncategorized__';
+        totals.set(categoryId, (totals.get(categoryId) ?? 0) + entry.amountMinor);
+      }
+
+      const categoryIds = [...totals.keys()].filter(
+        (id) => id !== '__uncategorized__',
+      );
+      const categories = await db.categories.bulkGet(categoryIds);
+      const names = new Map<string, string>();
+      categories.forEach((category, index) => {
+        const categoryId = categoryIds[index];
+        if (category && categoryId !== undefined) {
+          names.set(categoryId, category.name);
+        }
+      });
+
+      const rows = [...totals].map(([categoryId, amountMinor]) => ({
+        categoryId,
+        name:
+          categoryId === '__uncategorized__'
+            ? 'Uncategorized'
+            : (names.get(categoryId) ?? 'Uncategorized'),
+        amountMinor,
+      }));
+
+      rows.sort(
+        (left, right) =>
+          right.amountMinor - left.amountMinor ||
+          left.name.localeCompare(right.name) ||
+          left.categoryId.localeCompare(right.categoryId),
+      );
+
+      return {
+        month,
+        totalMinor: rows.reduce((sum, row) => sum + row.amountMinor, 0),
+        rows,
+      };
     },
 
     async getSettings() {

@@ -421,6 +421,219 @@ describe('addExpense', () => {
   });
 });
 
+describe('monthSummary', () => {
+  async function setup() {
+    const db = openDatabase();
+    const ledger = createLedger(db);
+    await ledger.initialize();
+    const checking = await ledger.addAccount({
+      name: 'Checking',
+      type: 'checking',
+    });
+    const card = await ledger.addAccount({ name: 'Visa', type: 'credit' });
+    return { db, ledger, checking, card };
+  }
+
+  it('groups expenses by category across accounts, including credit', async () => {
+    const { ledger, checking, card } = await setup();
+    await ledger.addExpense({
+      amountMinor: 1200,
+      categoryId: 'cat_groceries',
+      accountId: checking.id,
+      date: '2026-11-02',
+    });
+    await ledger.addExpense({
+      amountMinor: 800,
+      categoryId: 'cat_groceries',
+      accountId: card.id,
+      date: '2026-11-03',
+    });
+    await ledger.addExpense({
+      amountMinor: 500,
+      categoryId: 'cat_transport',
+      accountId: card.id,
+      date: '2026-11-04',
+    });
+
+    const summary = await ledger.monthSummary('2026-11');
+
+    expect(summary).toEqual({
+      month: '2026-11',
+      totalMinor: 2500,
+      rows: [
+        { categoryId: 'cat_groceries', name: 'Groceries', amountMinor: 2000 },
+        { categoryId: 'cat_transport', name: 'Transport', amountMinor: 500 },
+      ],
+    });
+  });
+
+  it('sorts by amount, then name, then category id', async () => {
+    const { db, ledger, checking } = await setup();
+    await db.categories.bulkAdd([
+      { id: 'cat_z_same', name: 'Same', archived: false },
+      { id: 'cat_a_same', name: 'Same', archived: false },
+    ]);
+    await db.entries.bulkAdd([
+      {
+        id: 'entry-groceries',
+        kind: 'expense',
+        date: '2026-11-01',
+        amountMinor: 500,
+        accountId: checking.id,
+        categoryId: 'cat_groceries',
+      },
+      {
+        id: 'entry-health',
+        kind: 'expense',
+        date: '2026-11-02',
+        amountMinor: 500,
+        accountId: checking.id,
+        categoryId: 'cat_health',
+      },
+      {
+        id: 'entry-same-z',
+        kind: 'expense',
+        date: '2026-11-03',
+        amountMinor: 500,
+        accountId: checking.id,
+        categoryId: 'cat_z_same',
+      },
+      {
+        id: 'entry-same-a',
+        kind: 'expense',
+        date: '2026-11-04',
+        amountMinor: 500,
+        accountId: checking.id,
+        categoryId: 'cat_a_same',
+      },
+      {
+        id: 'entry-big',
+        kind: 'expense',
+        date: '2026-11-05',
+        amountMinor: 900,
+        accountId: checking.id,
+        categoryId: 'cat_fun',
+      },
+    ]);
+
+    const summary = await ledger.monthSummary('2026-11');
+
+    expect(summary.rows.map((row) => row.categoryId)).toEqual([
+      'cat_fun',
+      'cat_groceries',
+      'cat_health',
+      'cat_a_same',
+      'cat_z_same',
+    ]);
+    expect(summary.rows.reduce((sum, row) => sum + row.amountMinor, 0)).toBe(
+      summary.totalMinor,
+    );
+  });
+
+  it('excludes other months and puts backdated entries in their month', async () => {
+    const { ledger, checking } = await setup();
+    await ledger.addExpense({
+      amountMinor: 1000,
+      categoryId: 'cat_groceries',
+      accountId: checking.id,
+      date: '2026-10-31',
+    });
+    await ledger.addExpense({
+      amountMinor: 2000,
+      categoryId: 'cat_groceries',
+      accountId: checking.id,
+      date: '2026-11-01',
+    });
+
+    expect((await ledger.monthSummary('2026-10')).totalMinor).toBe(1000);
+    expect((await ledger.monthSummary('2026-11')).totalMinor).toBe(2000);
+  });
+
+  it('returns an empty summary for a month with no spending', async () => {
+    const { ledger } = await setup();
+
+    expect(await ledger.monthSummary('2026-11')).toEqual({
+      month: '2026-11',
+      totalMinor: 0,
+      rows: [],
+    });
+  });
+
+  it('keeps a missing category as an Uncategorized row', async () => {
+    const { db, ledger, checking } = await setup();
+    await db.entries.add({
+      id: 'entry-missing-category',
+      kind: 'expense',
+      date: '2026-11-02',
+      amountMinor: 750,
+      accountId: checking.id,
+      categoryId: 'cat_missing',
+    });
+
+    expect(await ledger.monthSummary('2026-11')).toEqual({
+      month: '2026-11',
+      totalMinor: 750,
+      rows: [
+        {
+          categoryId: 'cat_missing',
+          name: 'Uncategorized',
+          amountMinor: 750,
+        },
+      ],
+    });
+  });
+
+  it('ignores non-expense kinds', async () => {
+    const { db, ledger, checking } = await setup();
+    await db.entries.bulkAdd([
+      {
+        id: 'entry-income',
+        kind: 'income',
+        date: '2026-11-01',
+        amountMinor: 1000,
+        accountId: checking.id,
+        categoryId: 'cat_other',
+      },
+      {
+        id: 'entry-transfer',
+        kind: 'transfer',
+        date: '2026-11-02',
+        amountMinor: 2000,
+        accountId: checking.id,
+        toAccountId: checking.id,
+      },
+      {
+        id: 'entry-opening',
+        kind: 'opening',
+        date: '2026-11-03',
+        amountMinor: -3000,
+        accountId: checking.id,
+      },
+      {
+        id: 'entry-expense',
+        kind: 'expense',
+        date: '2026-11-04',
+        amountMinor: 400,
+        accountId: checking.id,
+        categoryId: 'cat_other',
+      },
+    ]);
+
+    const summary = await ledger.monthSummary('2026-11');
+
+    expect(summary.totalMinor).toBe(400);
+    expect(summary.rows).toEqual([
+      { categoryId: 'cat_other', name: 'Other', amountMinor: 400 },
+    ]);
+  });
+
+  it('throws RangeError for a malformed month', async () => {
+    const { ledger } = await setup();
+
+    await expect(ledger.monthSummary('2026-13')).rejects.toThrow(RangeError);
+  });
+});
+
 describe('categories and settings reads', () => {
   it('lists categories by name then id, including archived rows', async () => {
     const db = openDatabase();
