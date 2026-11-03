@@ -6,6 +6,7 @@ import { createLedger } from './data/ledger';
 import type { Ledger } from './data/ledger';
 import { App } from './app/App';
 import { BootError } from './app/BootError';
+import { registerPwa, requestPersistentStorage } from './app/pwa';
 
 export async function boot(
   ledger: Ledger,
@@ -24,6 +25,8 @@ export async function boot(
       <App ledger={ledger} />
     </StrictMode>,
   );
+  requestPersistentStorage();
+  registerPwa();
 }
 
 const rootElement = document.getElementById('root');
