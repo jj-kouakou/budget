@@ -155,8 +155,65 @@ export function createLedger(db: BudgetDatabase): Ledger {
       );
     },
 
-    async addExpense() {
-      throw new Error('not implemented');
+    async addExpense(input) {
+      return db.transaction(
+        'rw',
+        db.accounts,
+        db.categories,
+        db.entries,
+        db.settings,
+        async () => {
+          if (
+            !Number.isSafeInteger(input.amountMinor) ||
+            input.amountMinor <= 0
+          ) {
+            throw new LedgerError(
+              'invalid-amount',
+              'Enter an amount greater than zero.',
+            );
+          }
+          if (!isValidLocalDate(input.date)) {
+            throw new LedgerError('invalid-date', 'Choose a valid date.');
+          }
+
+          const account = await db.accounts.get(input.accountId);
+          if (!account) {
+            throw new LedgerError(
+              'unknown-account',
+              'That account no longer exists. Choose another.',
+            );
+          }
+
+          const category = await db.categories.get(input.categoryId);
+          if (!category) {
+            throw new LedgerError(
+              'unknown-category',
+              'That category no longer exists. Choose another.',
+            );
+          }
+
+          const entry: Entry = {
+            id: crypto.randomUUID(),
+            kind: 'expense',
+            date: input.date,
+            amountMinor: input.amountMinor,
+            accountId: input.accountId,
+            categoryId: input.categoryId,
+          };
+          await db.entries.add(entry);
+
+          const settings = await db.settings.get('app');
+          if (!settings) {
+            throw new Error('Ledger not initialized');
+          }
+          await db.settings.put({
+            ...settings,
+            lastAccountId: input.accountId,
+          });
+
+          return entry;
+        },
+      );
     },
 
     async monthSummary() {

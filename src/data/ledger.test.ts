@@ -267,6 +267,160 @@ describe('accounts', () => {
   });
 });
 
+describe('addExpense', () => {
+  async function setup() {
+    const db = openDatabase();
+    const ledger = createLedger(db);
+    await ledger.initialize();
+    const account = await ledger.addAccount({
+      name: 'Checking',
+      type: 'checking',
+    });
+    return { db, ledger, account };
+  }
+
+  it('writes one expense and remembers the account', async () => {
+    const { db, ledger, account } = await setup();
+
+    const entry = await ledger.addExpense({
+      amountMinor: 1234,
+      categoryId: 'cat_groceries',
+      accountId: account.id,
+      date: '2026-11-02',
+    });
+
+    expect(entry).toMatchObject({
+      kind: 'expense',
+      date: '2026-11-02',
+      amountMinor: 1234,
+      accountId: account.id,
+      categoryId: 'cat_groceries',
+    });
+    expect(entry).not.toHaveProperty('toAccountId');
+    expect(await db.entries.get(entry.id)).toEqual(entry);
+    expect((await db.settings.get('app'))?.lastAccountId).toBe(account.id);
+  });
+
+  it.each([0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1])(
+    'rejects amount %s',
+    async (amountMinor) => {
+      const { db, ledger, account } = await setup();
+
+      const error = await ledger
+        .addExpense({
+          amountMinor,
+          categoryId: 'cat_groceries',
+          accountId: account.id,
+          date: '2026-11-02',
+        })
+        .catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(LedgerError);
+      expect(error).toMatchObject({ code: 'invalid-amount' });
+      expect(await db.entries.count()).toBe(0);
+    },
+  );
+
+  it('rejects an invalid date', async () => {
+    const { db, ledger, account } = await setup();
+
+    const error = await ledger
+      .addExpense({
+        amountMinor: 100,
+        categoryId: 'cat_groceries',
+        accountId: account.id,
+        date: '2026-02-30',
+      })
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(LedgerError);
+    expect(error).toMatchObject({ code: 'invalid-date' });
+    expect(await db.entries.count()).toBe(0);
+  });
+
+  it('rejects an unknown account', async () => {
+    const { db, ledger } = await setup();
+
+    const error = await ledger
+      .addExpense({
+        amountMinor: 100,
+        categoryId: 'cat_groceries',
+        accountId: 'missing',
+        date: '2026-11-02',
+      })
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(LedgerError);
+    expect(error).toMatchObject({ code: 'unknown-account' });
+    expect(await db.entries.count()).toBe(0);
+  });
+
+  it('rejects an unknown category', async () => {
+    const { db, ledger, account } = await setup();
+
+    const error = await ledger
+      .addExpense({
+        amountMinor: 100,
+        categoryId: 'missing',
+        accountId: account.id,
+        date: '2026-11-02',
+      })
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(LedgerError);
+    expect(error).toMatchObject({ code: 'unknown-category' });
+    expect(await db.entries.count()).toBe(0);
+  });
+
+  it('reports invalid amount before an unknown account', async () => {
+    const { ledger } = await setup();
+
+    const error = await ledger
+      .addExpense({
+        amountMinor: 0,
+        categoryId: 'cat_groceries',
+        accountId: 'missing',
+        date: '2026-11-02',
+      })
+      .catch((caught: unknown) => caught);
+
+    expect(error).toMatchObject({ code: 'invalid-amount' });
+  });
+
+  it('accepts an archived category', async () => {
+    const { db, ledger, account } = await setup();
+    await db.categories.update('cat_groceries', { archived: true });
+
+    const entry = await ledger.addExpense({
+      amountMinor: 100,
+      categoryId: 'cat_groceries',
+      accountId: account.id,
+      date: '2026-11-02',
+    });
+
+    expect(entry.categoryId).toBe('cat_groceries');
+  });
+
+  it('aborts when settings are missing', async () => {
+    const { db, ledger, account } = await setup();
+    await db.settings.delete('app');
+
+    const error = await ledger
+      .addExpense({
+        amountMinor: 100,
+        categoryId: 'cat_groceries',
+        accountId: account.id,
+        date: '2026-11-02',
+      })
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(Error);
+    expect(error).not.toBeInstanceOf(LedgerError);
+    expect(error).toMatchObject({ message: 'Ledger not initialized' });
+    expect(await db.entries.count()).toBe(0);
+  });
+});
+
 describe('categories and settings reads', () => {
   it('lists categories by name then id, including archived rows', async () => {
     const db = openDatabase();
