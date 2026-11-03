@@ -44,6 +44,11 @@ describe('parseAmount', () => {
     expect(parseAmount('12.', 0)).toBeNull();
   });
 
+  it('rejects unsafe exponent-0 values', () => {
+    expect(parseAmount('9007199254740992', 0)).toBeNull();
+    expect(parseAmount('9'.repeat(400), 0)).toBeNull();
+  });
+
   it.each([-1, 7, 1.5])('throws RangeError for exponent %s', (exponent) => {
     expect(() => parseAmount('12', exponent)).toThrow(RangeError);
   });

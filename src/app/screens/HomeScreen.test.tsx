@@ -139,6 +139,46 @@ describe('HomeScreen', () => {
     expect(screen.getByRole('button', { name: 'Next month' })).toBeDisabled();
   });
 
+  it('counts a credit-card expense in the total', async () => {
+    const card = await ledger.addAccount({ name: 'Visa', type: 'credit' });
+    await ledger.addExpense({
+      amountMinor: 2500,
+      categoryId: 'cat_groceries',
+      accountId: card.id,
+      date: '2026-11-02',
+    });
+
+    render(<HomeScreen ledger={ledger} month="2026-11" />);
+
+    expect(
+      await screen.findByText('Groceries'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Spent').closest('.spent')).toHaveTextContent(
+      '25.00',
+    );
+  });
+
+  it('navigates to the add form', async () => {
+    const user = userEvent.setup();
+    await addExpense(100, 'cat_groceries');
+    render(<HomeScreen ledger={ledger} month="2026-11" />);
+    await screen.findByRole('button', { name: 'Add expense' });
+
+    await user.click(screen.getByRole('button', { name: 'Add expense' }));
+
+    expect(window.location.hash).toBe('#/add');
+  });
+
+  it('navigates to accounts', async () => {
+    const user = userEvent.setup();
+    render(<HomeScreen ledger={ledger} month="2026-11" />);
+    await screen.findByRole('button', { name: 'Accounts' });
+
+    await user.click(screen.getByRole('button', { name: 'Accounts' }));
+
+    expect(window.location.hash).toBe('#/accounts');
+  });
+
   it('updates the total after a live write', async () => {
     render(<HomeScreen ledger={ledger} month="2026-11" />);
     await screen.findByText('No spending yet this month.');

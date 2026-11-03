@@ -35,10 +35,6 @@ function expenseErrorMessage(code: LedgerErrorCode): FieldErrors {
   }
 }
 
-function hasErrors(errors: FieldErrors): boolean {
-  return Object.keys(errors).length > 0;
-}
-
 export function AddExpenseScreen({ ledger }: { ledger: Ledger }) {
   const accounts = useLiveQuery(() => ledger.listAccounts(), [ledger]);
   const categories = useLiveQuery(() => ledger.listCategories(), [ledger]);
@@ -83,6 +79,45 @@ export function AddExpenseScreen({ ledger }: { ledger: Ledger }) {
   );
 }
 
+function ChoiceGroup({
+  legend,
+  options,
+  selectedId,
+  errorId,
+  error,
+  onSelect,
+}: {
+  legend: string;
+  options: { id: string; label: string }[];
+  selectedId: string | null;
+  errorId?: string;
+  error?: string;
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <fieldset className="field" aria-describedby={errorId}>
+      <legend>{legend}</legend>
+      <div className="chip-group">
+        {options.map((option) => (
+          <button
+            key={option.id}
+            type="button"
+            aria-pressed={selectedId === option.id}
+            onClick={() => onSelect(option.id)}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+      {error ? (
+        <p id={errorId} className="field-error">
+          {error}
+        </p>
+      ) : null}
+    </fieldset>
+  );
+}
+
 function AddExpenseForm({
   ledger,
   accounts,
@@ -109,12 +144,11 @@ function AddExpenseForm({
   const submittingRef = useRef(false);
 
   function clearError(field: keyof FieldErrors) {
-    setErrors((current) => {
-      if (current[field] === undefined && current.form === undefined) {
-        return current;
-      }
-      return { ...current, [field]: undefined, form: undefined };
-    });
+    setErrors((current) =>
+      current[field] === undefined
+        ? current
+        : { ...current, [field]: undefined },
+    );
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -139,10 +173,10 @@ function AddExpenseForm({
     }
 
     if (
-      hasErrors(nextErrors) ||
       amountMinor === null ||
       categoryId === null ||
-      accountId === null
+      accountId === null ||
+      Object.keys(nextErrors).length > 0
     ) {
       setErrors(nextErrors);
       return;
@@ -196,59 +230,35 @@ function AddExpenseForm({
           ) : null}
         </div>
 
-        <fieldset
-          className="field"
-          aria-describedby={errors.category ? 'category-error' : undefined}
-        >
-          <legend>Category</legend>
-          <div className="chip-group">
-            {categories.map((category) => (
-              <button
-                key={category.id}
-                type="button"
-                aria-pressed={categoryId === category.id}
-                onClick={() => {
-                  setCategoryId(category.id);
-                  clearError('category');
-                }}
-              >
-                {category.name}
-              </button>
-            ))}
-          </div>
-          {errors.category ? (
-            <p id="category-error" className="field-error">
-              {errors.category}
-            </p>
-          ) : null}
-        </fieldset>
+        <ChoiceGroup
+          legend="Category"
+          options={categories.map((category) => ({
+            id: category.id,
+            label: category.name,
+          }))}
+          selectedId={categoryId}
+          errorId={errors.category ? 'category-error' : undefined}
+          error={errors.category}
+          onSelect={(id) => {
+            setCategoryId(id);
+            clearError('category');
+          }}
+        />
 
-        <fieldset
-          className="field"
-          aria-describedby={errors.account ? 'account-error' : undefined}
-        >
-          <legend>Account</legend>
-          <div className="chip-group">
-            {accounts.map((account) => (
-              <button
-                key={account.id}
-                type="button"
-                aria-pressed={accountId === account.id}
-                onClick={() => {
-                  setAccountId(account.id);
-                  clearError('account');
-                }}
-              >
-                {account.name} · {ACCOUNT_TYPE_LABELS[account.type]}
-              </button>
-            ))}
-          </div>
-          {errors.account ? (
-            <p id="account-error" className="field-error">
-              {errors.account}
-            </p>
-          ) : null}
-        </fieldset>
+        <ChoiceGroup
+          legend="Account"
+          options={accounts.map((account) => ({
+            id: account.id,
+            label: `${account.name} · ${ACCOUNT_TYPE_LABELS[account.type]}`,
+          }))}
+          selectedId={accountId}
+          errorId={errors.account ? 'account-error' : undefined}
+          error={errors.account}
+          onSelect={(id) => {
+            setAccountId(id);
+            clearError('account');
+          }}
+        />
 
         <div className="field">
           <label htmlFor="expense-date">Date</label>

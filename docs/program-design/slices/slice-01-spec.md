@@ -5,8 +5,9 @@
   `docs/architecture/north-star.md`,
   `docs/architecture/slices/slice-01-architecture.md`, ADRs 0001/0003/0004/0005,
   `CONTEXT.md`
-- **Implementation state:** not built. `src/` contains only `.gitkeep`; no
-  `package.json` or tooling exists yet.
+- **Implementation state:** built and deployed. All 13 tickets are complete;
+  the app is live at https://jj-kouakou.github.io/budget/. See §20 for the
+  build outcome and verification limits.
 - **Endpoints:** none. This is a static PWA; the persistence seam described in
   §9 is the entire application API.
 
@@ -153,11 +154,13 @@ first load.
 | `src/data/ledger.ts` | The only persistence seam: seeding, validation, transactions, reads | `types`, `db`, `money`, `calendar` |
 | `src/app/router.ts` | Hash-route parsing, route encoding, navigation, `useHashRoute` | `calendar` |
 | `src/app/pwa.ts` | Service-worker registration and persistent-storage request | browser APIs, `virtual:pwa-register` |
+| `src/app/labels.ts` | Display labels for account types | `types` |
+| `src/app/BootError.tsx` | Boot-failure screen and Reload action | none |
 | `src/app/App.tsx` | Boot-ready shell, first-run gate, screen switch | `router`, `ledger`, screens |
 | `src/app/screens/HomeScreen.tsx` | Month total, category breakdown, month controls, add/accounts entry points | `ledger`, `money`, `calendar`, `router` |
 | `src/app/screens/AddExpenseScreen.tsx` | Add-expense form and its state machine | `ledger`, `money`, `calendar`, `router` |
 | `src/app/screens/AccountsScreen.tsx` | Account list, add form, inline rename, start-logging action | `ledger`, `router` |
-| `src/main.tsx` | Database/ledger construction, `initialize()`, boot-error screen, React mount | `db`, `ledger`, `pwa`, `App` |
+| `src/main.tsx` | Database/ledger construction, `initialize()`, boot-error screen, React mount, `boot()` export | `db`, `ledger`, `pwa`, `App`, `BootError` |
 | `src/test/setup.ts` | `fake-indexeddb/auto` and jest-dom matchers | test-only |
 
 Dependency direction is one-way:
@@ -908,7 +911,10 @@ AccountForm:
       setSubmitting(false)
 
 Rename row:
-  click "Rename" -> editingId=id, draftName=account.name, renameError=null
+  click "Rename" -> editingId=id, editingName=account.name,
+                    draftName=account.name, renameError=null
+  if the account disappears from the live query while editing, the rename
+  form stays mounted so Save can still report `unknown-account`
   renamingRef: useRef(false)
   Enter or "Save":
     if renamingRef.current: return
@@ -1046,6 +1052,10 @@ for UI tests that assert accessible names.
 
 ### 13.1 Vite plugin
 
+GitHub Pages project hosting is the chosen deploy target, so the build uses
+`base: '/budget/'` and the manifest uses `/budget/` for both `start_url` and
+`scope`. The deployed origin is https://jj-kouakou.github.io/budget/.
+
 ```ts
 VitePWA({
   registerType: 'autoUpdate',
@@ -1053,8 +1063,8 @@ VitePWA({
     name: 'Budget',
     short_name: 'Budget',
     description: 'A local-first ledger for this month’s spending.',
-    start_url: '/',
-    scope: '/',
+    start_url: '/budget/',
+    scope: '/budget/',
     display: 'standalone',
     background_color: '#ffffff',
     theme_color: '#0f172a',
@@ -1407,3 +1417,27 @@ state model.
 - **Docs:** this spec is the implementation contract for the ticket breakdown.
   If the build discovers a contradiction, the spec is updated in the same
   change rather than silently diverging.
+
+## 20. Build Outcome
+
+All 13 tickets were built test-first on `slice-01`, reviewed on a different
+model, and deployed from `master` through the GitHub Pages Actions workflow in
+`.github/workflows/deploy.yml`.
+
+- **Tests:** 153 Vitest tests across 9 files, including domain unit tests,
+  `createLedger` integration on `fake-indexeddb`, router tests, and UI tests
+  through the screens and `App`.
+- **Build:** `npm run build` emits `dist/manifest.webmanifest`, `dist/sw.js`,
+  and the four PNG icons under `dist/icons/`.
+- **Browser smoke (Chromium, 390×844):** first-run setup, add expense, live
+  total update, reload persistence, offline reload, offline add, last-account
+  preselection, credit-card spending, and backdated month routing all verified.
+- **Service worker:** registered at scope `/budget/`; Workbox precache active.
+- **Deploy:** https://jj-kouakou.github.io/budget/ served over HTTPS with
+  `base: '/budget/'`.
+
+Verification limits from the build machine: iOS home-screen install, Android
+storage eviction, `navigator.storage.persist()` grants, the literal
+"under ten seconds" entry time, and device visual fit beyond the 390×844
+Chromium viewport were not verified. The 390×844 screenshots were inspected
+but are not a substitute for a real phone.

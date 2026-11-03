@@ -5,7 +5,8 @@
   `docs/architecture/slices/slice-01-architecture.md` (module map, schema),
   `docs/standards.md`
 - **Branch:** `slice-01`
-- **Status:** not started. No ticket has been built.
+- **Status:** complete. All 13 tickets built, tested, reviewed, and deployed
+to GitHub Pages on 2026-11-02.
 
 Each ticket is one build session, test-first, and one commit when its tests
 pass. Tickets are ordered by dependency, not by spec section order.

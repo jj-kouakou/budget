@@ -379,7 +379,7 @@ malformed `m` falls back to the current month.
 ## PWA and offline
 
 - `vite-plugin-pwa`, `registerType: 'autoUpdate'`.
-- Manifest: name `Budget`, `display: 'standalone'`, `start_url: '/'`, theme and
+- Manifest: name `Budget`, `display: 'standalone'`, `start_url: '/budget/'` (GitHub Pages project base), theme and
   background colours, 192/512 icons plus a maskable icon.
 - Workbox precaches the built shell (`js`, `css`, `html`, `svg`, `png`, `ico`,
   `woff2`), `navigateFallback: 'index.html'`. No runtime caching and no network
