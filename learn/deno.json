@@ -1,0 +1,15 @@
+{
+  "imports": {
+    "dexie": "npm:dexie@4.4.7",
+    "fake-indexeddb/auto": "npm:fake-indexeddb@6.2.7/auto",
+    "react": "npm:react@19.3.1",
+    "react-dom/server": "npm:react-dom@19.3.1/server",
+    "react-dom/client": "npm:react-dom@19.3.1/client",
+    "jsdom": "npm:jsdom@30.1.3",
+    "dexie-react-hooks": "npm:dexie-react-hooks@4.4.0"
+  },
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "jsxImportSource": "react"
+  }
+}
