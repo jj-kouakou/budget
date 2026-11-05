@@ -7,33 +7,14 @@ import {
   todayLocalDate,
 } from '../../domain/calendar';
 import { parseAmount } from '../../domain/money';
-import type { Ledger, LedgerErrorCode } from '../../data/ledger';
+import type { Ledger } from '../../data/ledger';
 import { LedgerError } from '../../data/ledger';
-import { ACCOUNT_TYPE_LABELS } from '../labels';
+import {
+  ExpenseFields,
+  expenseFieldErrors,
+  type ExpenseFieldErrors,
+} from '../expenseForm';
 import { navigate } from '../router';
-
-interface FieldErrors {
-  amount?: string;
-  category?: string;
-  account?: string;
-  date?: string;
-  form?: string;
-}
-
-function expenseErrorMessage(code: LedgerErrorCode): FieldErrors {
-  switch (code) {
-    case 'invalid-amount':
-      return { amount: 'Enter an amount greater than zero.' };
-    case 'invalid-date':
-      return { date: 'Choose a valid date.' };
-    case 'unknown-account':
-      return { account: 'That account no longer exists. Choose another.' };
-    case 'unknown-category':
-      return { category: 'That category no longer exists. Choose another.' };
-    default:
-      return { form: 'Could not save the expense. Try again.' };
-  }
-}
 
 export function AddExpenseScreen({ ledger }: { ledger: Ledger }) {
   const accounts = useLiveQuery(() => ledger.listAccounts(), [ledger]);
@@ -79,45 +60,6 @@ export function AddExpenseScreen({ ledger }: { ledger: Ledger }) {
   );
 }
 
-function ChoiceGroup({
-  legend,
-  options,
-  selectedId,
-  errorId,
-  error,
-  onSelect,
-}: {
-  legend: string;
-  options: { id: string; label: string }[];
-  selectedId: string | null;
-  errorId?: string;
-  error?: string;
-  onSelect: (id: string) => void;
-}) {
-  return (
-    <fieldset className="field" aria-describedby={errorId}>
-      <legend>{legend}</legend>
-      <div className="chip-group">
-        {options.map((option) => (
-          <button
-            key={option.id}
-            type="button"
-            aria-pressed={selectedId === option.id}
-            onClick={() => onSelect(option.id)}
-          >
-            {option.label}
-          </button>
-        ))}
-      </div>
-      {error ? (
-        <p id={errorId} className="field-error">
-          {error}
-        </p>
-      ) : null}
-    </fieldset>
-  );
-}
-
 function AddExpenseForm({
   ledger,
   accounts,
@@ -139,11 +81,11 @@ function AddExpenseForm({
       : (accounts[0]?.id ?? null);
   });
   const [date, setDate] = useState(() => todayLocalDate());
-  const [errors, setErrors] = useState<FieldErrors>({});
+  const [errors, setErrors] = useState<ExpenseFieldErrors>({});
   const [submitting, setSubmitting] = useState(false);
   const submittingRef = useRef(false);
 
-  function clearError(field: keyof FieldErrors) {
+  function clearError(field: keyof ExpenseFieldErrors) {
     setErrors((current) =>
       current[field] === undefined
         ? current
@@ -158,7 +100,7 @@ function AddExpenseForm({
     }
 
     const amountMinor = parseAmount(amountText, settings.currencyExponent);
-    const nextErrors: FieldErrors = {};
+    const nextErrors: ExpenseFieldErrors = {};
     if (amountMinor === null || amountMinor <= 0) {
       nextErrors.amount = 'Enter an amount greater than zero.';
     }
@@ -195,7 +137,11 @@ function AddExpenseForm({
       navigate({ name: 'home', month: monthOf(entry.date) });
     } catch (error) {
       if (error instanceof LedgerError) {
-        setErrors(expenseErrorMessage(error.code));
+        setErrors(
+          expenseFieldErrors(error.code) ?? {
+            form: 'Could not save the expense. Try again.',
+          },
+        );
       } else {
         setErrors({ form: 'Could not save the expense. Try again.' });
       }
@@ -209,75 +155,21 @@ function AddExpenseForm({
     <section>
       <h1>Add expense</h1>
       <form onSubmit={submit}>
-        <div className="field">
-          <label htmlFor="expense-amount">Amount</label>
-          <input
-            id="expense-amount"
-            type="text"
-            inputMode="decimal"
-            autoComplete="off"
-            value={amountText}
-            aria-describedby={errors.amount ? 'amount-error' : undefined}
-            onChange={(event) => {
-              setAmountText(event.target.value);
-              clearError('amount');
-            }}
-          />
-          {errors.amount ? (
-            <p id="amount-error" className="field-error">
-              {errors.amount}
-            </p>
-          ) : null}
-        </div>
-
-        <ChoiceGroup
-          legend="Category"
-          options={categories.map((category) => ({
-            id: category.id,
-            label: category.name,
-          }))}
-          selectedId={categoryId}
-          errorId={errors.category ? 'category-error' : undefined}
-          error={errors.category}
-          onSelect={(id) => {
-            setCategoryId(id);
-            clearError('category');
-          }}
+        <ExpenseFields
+          idPrefix="expense"
+          amountText={amountText}
+          onAmountChange={setAmountText}
+          categoryId={categoryId}
+          onCategoryChange={setCategoryId}
+          accountId={accountId}
+          onAccountChange={setAccountId}
+          date={date}
+          onDateChange={setDate}
+          accounts={accounts}
+          categories={categories}
+          errors={errors}
+          onClearError={clearError}
         />
-
-        <ChoiceGroup
-          legend="Account"
-          options={accounts.map((account) => ({
-            id: account.id,
-            label: `${account.name} · ${ACCOUNT_TYPE_LABELS[account.type]}`,
-          }))}
-          selectedId={accountId}
-          errorId={errors.account ? 'account-error' : undefined}
-          error={errors.account}
-          onSelect={(id) => {
-            setAccountId(id);
-            clearError('account');
-          }}
-        />
-
-        <div className="field">
-          <label htmlFor="expense-date">Date</label>
-          <input
-            id="expense-date"
-            type="date"
-            value={date}
-            aria-describedby={errors.date ? 'date-error' : undefined}
-            onChange={(event) => {
-              setDate(event.target.value);
-              clearError('date');
-            }}
-          />
-          {errors.date ? (
-            <p id="date-error" className="field-error">
-              {errors.date}
-            </p>
-          ) : null}
-        </div>
 
         {errors.form ? (
           <p role="alert" className="form-error">
