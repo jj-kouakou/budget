@@ -23,6 +23,8 @@ for next time — treat this file itself as versioned.
 
 **Per slice, looped:** Slice Architecture (extend) → Slice Program Design → Ticket Breakdown → Build → Review → Close-out
 
+**Combined build + review:** when one session should take a slice from tickets to a reviewed branch, call "Build and review slice 0X" — see Reusable session prompts → 7–8.
+
 **Periodic:** architecture drift check every 3–4 slices; triage as bug reports come in
 
 **Every gate:** new session at project-root → run the skill → write to `docs/` → update `AGENTS.md` if a new doc landed → `handoff` before closing
@@ -308,7 +310,8 @@ Before marking a slice complete and pulling the next one:
 ## Session & context rules
 
 - One session per gate. Always start at project-root, never inside a
-  subfolder.
+  subfolder. The combined 7–8 call below is the one exception; it still runs
+  Review in a fresh context.
 - Close every gate with `handoff` before starting the next.
 - Use pi-iso subagents for exploration inside any session rather than
   working inline — isolated filesystem copy, reports back, keeps your main
@@ -645,6 +648,103 @@ Review on a different model than Build. The last line surfaces a possibly
 incomplete implementation (something the spec asked for with no traceable
 path in the diff) instead of papering over the gap with a plausible-looking
 step.
+
+**7–8. Build + review — combined, one call:**
+
+Use this instead of running Steps 7 and 8 as two separate sessions when you
+want one call to take a slice from tickets to a reviewed branch. It is the
+one sanctioned exception to "one session per gate": Build and Review share a
+session, but not a context. The review still runs in fresh reviewer
+subagents on a different model, with only the diff and the docs.
+
+Call: "Build and review slice 0X."
+
+```
+Build and review slice 0X in one pass.
+
+Read, in this order, before writing any code:
+1. AGENTS.md and docs/workflow.md (Steps 6–9)
+2. docs/standards.md — all of it
+3. docs/program-design/slices/slice-0X-tickets.md — build order, standing
+   rules, boundary decisions
+4. docs/program-design/slices/slice-0X-spec.md
+5. docs/architecture/slices/slice-0X-architecture.md
+6. docs/architecture/north-star.md and the prior slice's architecture and
+   close-out handoff
+
+Preflight:
+- Commit any uncommitted slice-0X gate docs as a docs-only commit; then cut
+  branch slice-0X from master (or, if it exists, confirm it contains the gate
+  commit). Do not build on an uncommitted gate.
+- Run npm test and npm run typecheck. Record the baseline count. If either is
+  red before you change anything, stop and report.
+- Build the dependency frontier from the tickets doc; do not assume spec order.
+
+Phase 1 — Build, one ticket at a time:
+For each ticket in dependency order:
+1. Read the ticket, every spec section it cites, and the matching
+   architecture section.
+2. Write the failing tests the ticket names, at the seam it names. Confirm
+   the failure is the expected one.
+3. Implement the minimum that satisfies the ticket. No extra abstraction, no
+   second convention.
+4. Run the ticket's test file, then npm test, then npm run typecheck. For a
+   runnable surface, run npm run dev and exercise the ticket's acceptance
+   criteria in a real browser; record the steps and the observed result.
+5. Commit only when green: `ticket N: <name>`. If the build contradicts the
+   spec, fix the spec in the same commit and say so.
+6. Do not start the next ticket until the commit exists and the tree is clean.
+
+Follow the standing rules in the tickets doc exactly: test-first, assert
+LedgerError.code, known-good literals, real database per test, waitFor for
+live queries, no new dependency/schema/seam/mocked ledger, module direction,
+and existing tests unchanged. Use read-only scout subagents for mid-build
+exploration instead of reading the whole repo inline.
+
+Hard stops: a ticket needs a schema change, a new dependency, or a new seam
+the tickets doc forbids; the spec is ambiguous in a way that changes
+user-visible behavior; an acceptance criterion cannot be verified. Stop and
+report what is missing; do not weaken a test or skip a ticket.
+
+Phase 2 — Review, fresh:
+1. Set the reviewer model to a different model from the build model
+   (default: the routing table above; slice 01 used GLM 5.2 via
+   task.agentModelOverrides.reviewer, session-only).
+2. Spawn fresh reviewer subagents with only: `git diff master...HEAD`,
+   docs/standards.md, the slice spec, the slice architecture, the tickets
+   doc, and the prior slice's close-out. Do not give them your build
+   transcript or conclusions.
+3. Axis A — standards: every applicable section of docs/standards.md,
+   including pj-*. A documented standard overrides the baseline; skip what
+   tooling enforces; report only real findings.
+4. Axis B — spec and acceptance: every ticket's acceptance criteria and
+   cited spec sections, plus the invariants named in the slice architecture
+   (schema/version unchanged, write boundaries respected, totals agree,
+   module direction, existing tests unchanged).
+5. Each finding: severity, file:line, evidence, why it matters, smallest fix.
+   No drive-by refactors.
+6. Fix every hard violation, real bug, and missing test that would let a
+   plausible bug through. Escalate ambiguity rather than guessing. Commit
+   as one `review fixes: <summary>` commit.
+7. Re-run npm test, npm run typecheck, npm run build, and the affected
+   browser checks. Do not claim a fix without observing it.
+
+Report at the end: per-ticket commit hashes, test count before/after, review
+findings and resolutions, and anything you could not verify. Write it to
+docs/agents/slice-0X-build-review-handoff.md; Step 9 will fold it into the
+slice close-out handoff. Leave close-out itself for its own pass.
+```
+
+*Why:* the build is one continuous test-first loop, so splitting it from the
+review only buys independence if the review context is actually fresh. Running
+the review in fresh subagents that see only the diff and the docs preserves
+that independence without making you babysit a second session. If your
+harness cannot switch models per subagent, stop after Phase 1 and run Phase 2
+in a fresh session — the model split is the property that matters, not the
+session count. The preflight baseline check exists because a red baseline
+turns every later "tests pass" claim into a guess about what was already
+broken. Leaving close-out to Step 9 keeps the combined call from quietly
+absorbing the backlog and handoff decisions that need their own judgment.
 
 **9. Slice close-out — Definition of Done:**
 

@@ -11,7 +11,7 @@ The app replaces the spreadsheet that gets abandoned in week three.
 | # | Slice | What the user can do | Status |
 |---|---|---|---|
 | 1 | Log spending and see this month by category | Set up the accounts they spend from; add an expense in under ten seconds; see this month's total and category breakdown; move between months; install the app on the phone and use it without a connection. | Done — deployed at https://jj-kouakou.github.io/budget/ |
-| 2 | Inspect and correct entries | Tap a category to see the entries behind it; fix or remove a mistaken entry. | Backlog |
+| 2 | Inspect and correct entries | Tap a category to see the entries behind it; fix or remove a mistaken entry. | In progress |
 | 3 | Keep a backup | Export the ledger to a file and restore it; see when the last backup was made and whether the phone might discard the data. | Backlog |
 | 4 | Manage categories | Add, rename, and archive categories so the breakdown matches how they think about their money. | Backlog |
 | 5 | Compare with last month | See last month's category totals beside this month's. | Backlog |
@@ -24,8 +24,12 @@ The app replaces the spreadsheet that gets abandoned in week three.
 - **Slice 1 is the smallest complete loop that delivers the vision's headline.**
   Logging an expense and seeing this month's category totals is the product's
   reason to exist; everything else supports or extends that loop.
-- **Correction comes before backup.** A wrong number erodes trust immediately.
-  Backup lands before the ledger holds enough history to hurt if it is lost.
+- **Slice 2 was re-checked after slice 1 shipped and stays next.** Slice 1
+  delivers the headline number but no way to audit or correct it, so the first
+  mistake makes the number wrong for good. Correction protects the primary
+  metric — logging most transactions — better than anything else on the list.
+  Backup stays third: loss only starts to hurt once history accrues, while a
+  wrong number is on screen from the first typo.
 - **Category management lands before the last-month comparison.** The starter
   list is enough to begin, but the user should be able to shape the categories
   before the first full month is compared against the second.

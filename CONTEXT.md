@@ -15,9 +15,19 @@ entry. An entry does not "have a card type"; it happens *on* an account.
 _Avoid_: Payment method, card
 
 **Entry**:
-One dated movement of money recorded in the ledger. Exactly one of three kinds:
-expense, income, or transfer.
+One dated movement of money recorded in the ledger. Exactly one of four kinds:
+expense, income, transfer, or opening balance.
 _Avoid_: Transaction, record, line item
+
+**Correction**:
+Changing an entry's amount, category, account, or date in place. The entry
+keeps its identity; no earlier version is kept.
+_Avoid_: Edit, revision, amendment
+
+**Removal**:
+Deleting an entry from the ledger. Final: the entry is not archived and there
+is no undo.
+_Avoid_: Delete, deletion, void
 
 **Expense**:
 Money leaving an account in exchange for goods or services. Has exactly one

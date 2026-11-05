@@ -22,6 +22,9 @@ Read `docs/standards.md` before any code review.
 
 ## Standing rules
 - One gate per session; close every gate with a `handoff` written to `docs/`.
+  Exception: the combined build + review call (`docs/workflow.md`, Reusable
+  session prompts → 7–8) runs both gates in one session, with review in fresh
+  subagents on a different model.
 - Product vision and slice scopes stay user-facing. No tables, endpoints, or
   architecture language in `docs/product/`.
 - Build sessions: test-first (`implement` + `tdd`). Use `grilling` for small
