@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { monthOf, todayLocalDate } from '../../domain/calendar';
@@ -254,5 +254,176 @@ describe('EntryEditorScreen', () => {
     expect(save).toBeDisabled();
     await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
     expect((await db.entries.get(entry.id))?.amountMinor).toBe(4500);
+  });
+});
+
+describe('EntryEditorScreen removal', () => {
+  it('asks for confirmation, keeps the entry on Cancel, and focuses Cancel', async () => {
+    const entry = await addExpense(4500, 'cat_groceries', '2026-11-02');
+    const user = await openFromCategoryList(
+      /45\.00 on 2026-11-02, Checking/,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Remove entry' }));
+
+    const panel = screen.getByRole('group', { name: 'Confirm removal' });
+    expect(panel).toHaveTextContent(
+      /45\.00 on 2026-11-02 from Checking\? This cannot be undone\./,
+    );
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus();
+
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(
+      screen.queryByRole('group', { name: 'Confirm removal' }),
+    ).not.toBeInTheDocument();
+    expect(await db.entries.get(entry.id)).toEqual(entry);
+  });
+
+  it('removes the entry and updates the list and home totals', async () => {
+    const entry = await addExpense(4500, 'cat_groceries', '2026-11-02');
+    await addExpense(800, 'cat_groceries', '2026-11-03');
+    const user = await openFromCategoryList(
+      /45\.00 on 2026-11-02, Checking/,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Remove entry' }));
+    await user.click(screen.getByRole('button', { name: 'Remove' }));
+
+    await waitFor(() =>
+      expect(window.location.hash).toBe(
+        '#/category?m=2026-11&c=cat_groceries',
+      ),
+    );
+    expect(
+      await screen.findByRole('heading', { name: /^Groceries · / }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Spent').closest('.spent')).toHaveTextContent(
+      '8.00',
+    );
+    expect(await db.entries.get(entry.id)).toBeUndefined();
+
+    await user.click(screen.getByRole('button', { name: 'Back' }));
+
+    expect(
+      await screen.findByRole('button', { name: /^Groceries, / }),
+    ).toHaveTextContent('8.00');
+  });
+
+  it("lands on home when removing the category's last entry", async () => {
+    await addExpense(4500, 'cat_groceries', '2026-11-02');
+    await addExpense(500, 'cat_transport', '2026-11-03');
+    const user = await openFromCategoryList(
+      /45\.00 on 2026-11-02, Checking/,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Remove entry' }));
+    await user.click(screen.getByRole('button', { name: 'Remove' }));
+
+    await waitFor(() =>
+      expect(window.location.hash).toBe('#/?m=2026-11'),
+    );
+    expect(
+      await screen.findByRole('button', { name: /^Transport, / }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /^Groceries, / }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows the empty home state after removing the month last entry', async () => {
+    await addExpense(4500, 'cat_groceries', '2026-11-02');
+    const user = await openFromCategoryList(
+      /45\.00 on 2026-11-02, Checking/,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Remove entry' }));
+    await user.click(screen.getByRole('button', { name: 'Remove' }));
+
+    expect(
+      await screen.findByText('No spending yet this month.'),
+    ).toBeInTheDocument();
+    expect(window.location.hash).toBe('#/?m=2026-11');
+    expect(screen.getByText('Spent').closest('.spent')).toHaveTextContent(
+      '0.00',
+    );
+  });
+
+  it('removes a credit-card entry the same way', async () => {
+    const card = await ledger.addAccount({ name: 'Visa', type: 'credit' });
+    const entry = await ledger.addExpense({
+      amountMinor: 2500,
+      categoryId: 'cat_groceries',
+      accountId: card.id,
+      date: '2026-11-02',
+    });
+    const user = await openFromCategoryList(
+      /25\.00 on 2026-11-02, Visa/,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Remove entry' }));
+    expect(
+      screen.getByRole('group', { name: 'Confirm removal' }),
+    ).toHaveTextContent(/from Visa\?/);
+    await user.click(screen.getByRole('button', { name: 'Remove' }));
+
+    await waitFor(() =>
+      expect(window.location.hash).toBe('#/?m=2026-11'),
+    );
+    expect(await db.entries.get(entry.id)).toBeUndefined();
+  });
+
+  it('names the stored entry even after unsaved form changes', async () => {
+    const entry = await addExpense(4500, 'cat_groceries', '2026-11-02');
+    const user = await openFromCategoryList(
+      /45\.00 on 2026-11-02, Checking/,
+    );
+
+    await user.clear(screen.getByLabelText('Amount'));
+    await user.type(screen.getByLabelText('Amount'), '99.00');
+    await user.click(screen.getByRole('button', { name: 'Transport' }));
+    fireEvent.change(screen.getByLabelText('Date'), {
+      target: { value: '2026-12-01' },
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Remove entry' }));
+
+    const panel = screen.getByRole('group', { name: 'Confirm removal' });
+    expect(panel).toHaveTextContent(
+      /Remove .*45\.00 on 2026-11-02 from Checking\?/,
+    );
+    expect(panel).not.toHaveTextContent('99.00');
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(await db.entries.get(entry.id)).toEqual(entry);
+  });
+
+  it('deletes once on a rapid double Remove', async () => {
+    const entry = await addExpense(4500, 'cat_groceries', '2026-11-02');
+    const remove = vi.spyOn(ledger, 'deleteExpense');
+    const user = await openFromCategoryList(
+      /45\.00 on 2026-11-02, Checking/,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Remove entry' }));
+    const button = screen.getByRole('button', { name: 'Remove' });
+    fireEvent.click(button);
+    fireEvent.click(button);
+
+    expect(button).toBeDisabled();
+    await waitFor(() => expect(remove).toHaveBeenCalledTimes(1));
+    expect(await db.entries.get(entry.id)).toBeUndefined();
+  });
+
+  it('shows not-found without redirecting when the entry vanishes', async () => {
+    const entry = await addExpense(4500, 'cat_groceries', '2026-11-02');
+    const url = `#/entry/${entry.id}`;
+    await openFromCategoryList(/45\.00 on 2026-11-02, Checking/);
+
+    await db.entries.delete(entry.id);
+
+    expect(
+      await screen.findByRole('heading', { name: 'Entry not found' }),
+    ).toBeInTheDocument();
+    expect(window.location.hash).toBe(url);
   });
 });

@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import type { Account, Category, Entry, Settings } from '../../domain/types';
 import {
@@ -6,7 +6,7 @@ import {
   monthOf,
   todayLocalDate,
 } from '../../domain/calendar';
-import { formatAmountInput, parseAmount } from '../../domain/money';
+import { formatAmount, formatAmountInput, parseAmount } from '../../domain/money';
 import type { Ledger } from '../../data/ledger';
 import { LedgerError, UNCATEGORIZED_CATEGORY_ID } from '../../data/ledger';
 import {
@@ -119,8 +119,18 @@ function EntryForm({
     return initial;
   });
   const [submitting, setSubmitting] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [gone, setGone] = useState(false);
   const submittingRef = useRef(false);
+  const deletingRef = useRef(false);
+  const cancelDeleteRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (confirmingDelete) {
+      cancelDeleteRef.current?.focus();
+    }
+  }, [confirmingDelete]);
 
   function clearError(field: keyof ExpenseFieldErrors) {
     setErrors((current) =>
@@ -201,9 +211,55 @@ function EntryForm({
     }
   }
 
+  async function confirmRemove() {
+    if (deletingRef.current) {
+      return;
+    }
+    deletingRef.current = true;
+    setDeleting(true);
+    setErrors({});
+    try {
+      const removed = await ledger.deleteExpense(entry.id);
+      const month = monthOf(removed.date);
+      const categoryId =
+        removed.categoryId ?? UNCATEGORIZED_CATEGORY_ID;
+      const remaining = await ledger.categoryEntries(month, categoryId);
+      if (remaining.rows.length === 0) {
+        navigate({ name: 'home', month }, { replace: true });
+      } else {
+        navigate(
+          { name: 'category', month, categoryId },
+          { replace: true },
+        );
+      }
+    } catch (error) {
+      if (
+        error instanceof LedgerError &&
+        (error.code === 'unknown-entry' ||
+          error.code === 'unsupported-entry-kind')
+      ) {
+        setGone(true);
+      } else {
+        setErrors({ form: 'Could not remove the entry. Try again.' });
+      }
+    } finally {
+      deletingRef.current = false;
+      setDeleting(false);
+    }
+  }
+
   if (gone) {
     return <EntryNotFound />;
   }
+
+  const storedAmount = formatAmount(
+    entry.amountMinor,
+    settings.currency,
+    settings.currencyExponent,
+  );
+  const storedAccountName =
+    accounts.find((account) => account.id === entry.accountId)?.name ??
+    'Unknown account';
 
   return (
     <section>
@@ -231,29 +287,61 @@ function EntryForm({
           </p>
         ) : null}
 
-        <div className="actions">
-          <button
-            type="submit"
-            className="button-primary"
-            disabled={submitting}
-          >
-            Save changes
-          </button>
-          <button
-            type="button"
-            disabled={submitting}
-            onClick={() =>
-              navigate({
-                name: 'category',
-                month: monthOf(entry.date),
-                categoryId:
-                  entry.categoryId ?? UNCATEGORIZED_CATEGORY_ID,
-              })
-            }
-          >
-            Back
-          </button>
-        </div>
+        {confirmingDelete ? (
+          <div role="group" aria-label="Confirm removal">
+            <p>
+              Remove {storedAmount} on {entry.date} from{' '}
+              {storedAccountName}? This cannot be undone.
+            </p>
+            <div className="actions">
+              <button
+                type="button"
+                ref={cancelDeleteRef}
+                onClick={() => setConfirmingDelete(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={confirmRemove}
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="actions">
+            <button
+              type="submit"
+              className="button-primary"
+              disabled={submitting}
+            >
+              Save changes
+            </button>
+            <button
+              type="button"
+              disabled={submitting}
+              onClick={() =>
+                navigate({
+                  name: 'category',
+                  month: monthOf(entry.date),
+                  categoryId:
+                    entry.categoryId ?? UNCATEGORIZED_CATEGORY_ID,
+                })
+              }
+            >
+              Back
+            </button>
+            <button
+              type="button"
+              disabled={submitting}
+              onClick={() => setConfirmingDelete(true)}
+            >
+              Remove entry
+            </button>
+          </div>
+        )}
       </form>
     </section>
   );
