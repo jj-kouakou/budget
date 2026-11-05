@@ -78,18 +78,31 @@ export function HomeScreen({
       ) : (
         <>
           <ul className="category-list">
-            {summary.rows.map((row) => (
-              <li key={row.categoryId}>
-                <span>{row.name}</span>
-                <span>
-                  {formatAmount(
-                    row.amountMinor,
-                    settings.currency,
-                    settings.currencyExponent,
-                  )}
-                </span>
-              </li>
-            ))}
+            {summary.rows.map((row) => {
+              const formattedAmount = formatAmount(
+                row.amountMinor,
+                settings.currency,
+                settings.currencyExponent,
+              );
+              return (
+                <li key={row.categoryId}>
+                  <button
+                    type="button"
+                    aria-label={`${row.name}, ${formattedAmount}`}
+                    onClick={() =>
+                      navigate({
+                        name: 'category',
+                        month,
+                        categoryId: row.categoryId,
+                      })
+                    }
+                  >
+                    <span>{row.name}</span>
+                    <span>{formattedAmount}</span>
+                  </button>
+                </li>
+              );
+            })}
           </ul>
           <div className="actions">
             <button

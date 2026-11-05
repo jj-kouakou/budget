@@ -19,6 +19,20 @@ describe('parseHash', () => {
     ['#/add?m=2026-11', { name: 'add' }],
     ['#/accounts', { name: 'accounts' }],
     ['#/accounts?x=1', { name: 'accounts' }],
+    [
+      '#/category?m=2026-11&c=cat_groceries',
+      { name: 'category', month: '2026-11', categoryId: 'cat_groceries' },
+    ],
+    [
+      '#/category?c=cat_groceries',
+      { name: 'category', month: '2026-11', categoryId: 'cat_groceries' },
+    ],
+    [
+      '#/category?m=bad&c=cat_groceries',
+      { name: 'category', month: '2026-11', categoryId: 'cat_groceries' },
+    ],
+    ['#/category?m=2026-11', { name: 'home', month: '2026-11' }],
+    ['#/category?m=2026-11&c=', { name: 'home', month: '2026-11' }],
     ['#/nope', { name: 'home', month: '2026-11' }],
     ['#/add/', { name: 'home', month: '2026-11' }],
     ['#//', { name: 'home', month: '2026-11' }],
@@ -34,6 +48,23 @@ describe('routeToHash', () => {
     );
     expect(routeToHash({ name: 'add' })).toBe('#/add');
     expect(routeToHash({ name: 'accounts' })).toBe('#/accounts');
+    expect(
+      routeToHash({
+        name: 'category',
+        month: '2026-11',
+        categoryId: 'cat_groceries',
+      }),
+    ).toBe('#/category?m=2026-11&c=cat_groceries');
+  });
+
+  it('round-trips a category id containing reserved characters', () => {
+    const route = {
+      name: 'category' as const,
+      month: '2026-11',
+      categoryId: 'cat &? #/space',
+    };
+
+    expect(parseHash(routeToHash(route), '2026-11-02')).toEqual(route);
   });
 });
 

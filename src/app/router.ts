@@ -9,7 +9,8 @@ import {
 export type Route =
   | { name: 'home'; month: MonthKey }
   | { name: 'add' }
-  | { name: 'accounts' };
+  | { name: 'accounts' }
+  | { name: 'category'; month: MonthKey; categoryId: string };
 
 export function parseHash(hash: string, today?: LocalDate): Route {
   const withoutHash = hash.startsWith('#') ? hash.slice(1) : hash;
@@ -27,14 +28,20 @@ export function parseHash(hash: string, today?: LocalDate): Route {
 
   const requestedMonth = new URLSearchParams(query).get('m');
   const currentMonth = monthOf(today ?? todayLocalDate());
+  const month =
+    requestedMonth !== null && isValidMonthKey(requestedMonth)
+      ? requestedMonth
+      : currentMonth;
 
-  return {
-    name: 'home',
-    month:
-      requestedMonth !== null && isValidMonthKey(requestedMonth)
-        ? requestedMonth
-        : currentMonth,
-  };
+  if (path === '/category') {
+    const categoryId = new URLSearchParams(query).get('c');
+    if (categoryId === null || categoryId === '') {
+      return { name: 'home', month };
+    }
+    return { name: 'category', month, categoryId };
+  }
+
+  return { name: 'home', month };
 }
 
 export function routeToHash(route: Route): string {
@@ -45,6 +52,8 @@ export function routeToHash(route: Route): string {
       return '#/add';
     case 'accounts':
       return '#/accounts';
+    case 'category':
+      return `#/category?m=${route.month}&c=${encodeURIComponent(route.categoryId)}`;
   }
 }
 
