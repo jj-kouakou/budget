@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatAmount, parseAmount } from './money';
+import { formatAmount, formatAmountInput, parseAmount } from './money';
 
 describe('parseAmount', () => {
   it.each([
@@ -74,6 +74,58 @@ describe('formatAmount', () => {
   it('throws RangeError for an unsafe amount', () => {
     expect(() =>
       formatAmount(Number.MAX_SAFE_INTEGER + 1, 'CAD', 2, 'en-CA'),
+    ).toThrow(RangeError);
+  });
+});
+
+describe('formatAmountInput', () => {
+  it.each([
+    [4500, 2, '45.00'],
+    [450, 2, '4.50'],
+    [5, 2, '0.05'],
+    [0, 2, '0.00'],
+    [45, 0, '45'],
+    [1, 6, '0.000001'],
+    [-4500, 2, '-45.00'],
+  ])('formats %s at exponent %s as %j', (amountMinor, exponent, expected) => {
+    expect(formatAmountInput(amountMinor, exponent)).toBe(expected);
+  });
+
+  it('keeps trailing zeros instead of trimming the fraction', () => {
+    expect(formatAmountInput(4500, 2)).toBe('45.00');
+    expect(formatAmountInput(100, 6)).toBe('0.000100');
+  });
+
+  it.each([
+    [0, 0],
+    [0, 2],
+    [0, 6],
+    [1, 0],
+    [1, 2],
+    [1, 6],
+    [5, 2],
+    [50, 2],
+    [450, 2],
+    [4500, 2],
+    [999999, 2],
+    [123456789, 2],
+  ])('round-trips %s at exponent %s through parseAmount', (amount, exponent) => {
+    expect(parseAmount(formatAmountInput(amount, exponent), exponent)).toBe(
+      amount,
+    );
+  });
+
+  it('renders a leading minus for negative values', () => {
+    expect(formatAmountInput(-1, 2)).toBe('-0.01');
+  });
+
+  it.each([-1, 7, 1.5])('throws RangeError for exponent %s', (exponent) => {
+    expect(() => formatAmountInput(100, exponent)).toThrow(RangeError);
+  });
+
+  it('throws RangeError for an unsafe amount', () => {
+    expect(() =>
+      formatAmountInput(Number.MAX_SAFE_INTEGER + 1, 2),
     ).toThrow(RangeError);
   });
 });

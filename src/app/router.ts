@@ -10,7 +10,8 @@ export type Route =
   | { name: 'home'; month: MonthKey }
   | { name: 'add' }
   | { name: 'accounts' }
-  | { name: 'category'; month: MonthKey; categoryId: string };
+  | { name: 'category'; month: MonthKey; categoryId: string }
+  | { name: 'entry'; entryId: string };
 
 export function parseHash(hash: string, today?: LocalDate): Route {
   const withoutHash = hash.startsWith('#') ? hash.slice(1) : hash;
@@ -41,6 +42,23 @@ export function parseHash(hash: string, today?: LocalDate): Route {
     return { name: 'category', month, categoryId };
   }
 
+  if (path.startsWith('/entry/')) {
+    const raw = path.slice('/entry/'.length);
+    if (raw === '' || raw.includes('/')) {
+      return { name: 'home', month: currentMonth };
+    }
+    let entryId: string;
+    try {
+      entryId = decodeURIComponent(raw);
+    } catch {
+      return { name: 'home', month: currentMonth };
+    }
+    if (entryId === '') {
+      return { name: 'home', month: currentMonth };
+    }
+    return { name: 'entry', entryId };
+  }
+
   return { name: 'home', month };
 }
 
@@ -54,6 +72,8 @@ export function routeToHash(route: Route): string {
       return '#/accounts';
     case 'category':
       return `#/category?m=${route.month}&c=${encodeURIComponent(route.categoryId)}`;
+    case 'entry':
+      return `#/entry/${encodeURIComponent(route.entryId)}`;
   }
 }
 

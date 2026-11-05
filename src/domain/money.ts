@@ -36,6 +36,25 @@ export function parseAmount(input: string, exponent: number): number | null {
   return Number.isSafeInteger(amount) ? amount : null;
 }
 
+export function formatAmountInput(
+  amountMinor: number,
+  exponent: number,
+): string {
+  requireExponent(exponent);
+  if (!Number.isSafeInteger(amountMinor)) {
+    throw new RangeError('Amount must be a safe integer');
+  }
+
+  const digits = String(Math.abs(amountMinor)).padStart(exponent + 1, '0');
+  const sign = amountMinor < 0 ? '-' : '';
+  if (exponent === 0) {
+    return `${sign}${digits}`;
+  }
+
+  const split = digits.length - exponent;
+  return `${sign}${digits.slice(0, split)}.${digits.slice(split)}`;
+}
+
 export function formatAmount(
   amountMinor: number,
   currency: string,

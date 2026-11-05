@@ -80,6 +80,9 @@ export function CategoryEntriesScreen({
                 <button
                   type="button"
                   aria-label={`${formattedAmount} on ${row.date}, ${label}`}
+                  onClick={() =>
+                    navigate({ name: 'entry', entryId: row.id })
+                  }
                 >
                   <span>{formattedAmount}</span>
                   <span>{row.date}</span>
