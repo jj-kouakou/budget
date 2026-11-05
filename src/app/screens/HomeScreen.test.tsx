@@ -191,4 +191,30 @@ describe('HomeScreen', () => {
       ),
     );
   });
+
+  it('renders every category row as a labelled button', async () => {
+    await addExpense(2000, 'cat_groceries');
+
+    render(<HomeScreen ledger={ledger} month="2026-11" />);
+
+    const row = await screen.findByRole('button', {
+      name: /^Groceries, /,
+    });
+    expect(row).toHaveTextContent('Groceries');
+    expect(row).toHaveTextContent('20.00');
+  });
+
+  it('opens the category entries route for the displayed month', async () => {
+    const user = userEvent.setup();
+    await addExpense(2000, 'cat_groceries', '2026-10-05');
+    window.location.hash = '#/?m=2026-10';
+    render(<HomeHarness ledger={ledger} />);
+
+    const row = await screen.findByRole('button', { name: /^Groceries, / });
+    await user.click(row);
+
+    expect(window.location.hash).toBe(
+      '#/category?m=2026-10&c=cat_groceries',
+    );
+  });
 });

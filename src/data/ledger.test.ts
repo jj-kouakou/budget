@@ -1,7 +1,12 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import type { Account } from '../domain/types';
+import type { Account, Entry } from '../domain/types';
 import { BudgetDatabase, SCHEMA_VERSION } from './db';
-import { LedgerError, createLedger } from './ledger';
+import {
+  LedgerError,
+  UNCATEGORIZED_CATEGORY_ID,
+  UNCATEGORIZED_LABEL,
+  createLedger,
+} from './ledger';
 import { STARTER_CATEGORIES } from './seed';
 
 const databases: BudgetDatabase[] = [];
@@ -678,5 +683,644 @@ describe('categories and settings reads', () => {
     expect(error).toBeInstanceOf(Error);
     expect(error).not.toBeInstanceOf(LedgerError);
     expect(error).toMatchObject({ message: 'Ledger not initialized' });
+  });
+});
+
+describe('categoryEntries', () => {
+  async function setup() {
+    const db = openDatabase();
+    const ledger = createLedger(db);
+    await ledger.initialize();
+    const checking = await ledger.addAccount({
+      name: 'Checking',
+      type: 'checking',
+    });
+    const card = await ledger.addAccount({ name: 'Visa', type: 'credit' });
+    return { db, ledger, checking, card };
+  }
+
+  it('returns only the requested category and month, newest first', async () => {
+    const { ledger, checking, card } = await setup();
+    await ledger.addExpense({
+      amountMinor: 1200,
+      categoryId: 'cat_groceries',
+      accountId: checking.id,
+      date: '2026-11-02',
+    });
+    await ledger.addExpense({
+      amountMinor: 800,
+      categoryId: 'cat_groceries',
+      accountId: card.id,
+      date: '2026-11-03',
+    });
+    await ledger.addExpense({
+      amountMinor: 500,
+      categoryId: 'cat_transport',
+      accountId: card.id,
+      date: '2026-11-04',
+    });
+    await ledger.addExpense({
+      amountMinor: 999,
+      categoryId: 'cat_groceries',
+      accountId: checking.id,
+      date: '2026-10-31',
+    });
+
+    const result = await ledger.categoryEntries('2026-11', 'cat_groceries');
+
+    expect(result.month).toBe('2026-11');
+    expect(result.categoryId).toBe('cat_groceries');
+    expect(result.categoryName).toBe('Groceries');
+    expect(result.totalMinor).toBe(2000);
+    expect(result.rows.map((row) => [row.amountMinor, row.date])).toEqual([
+      [800, '2026-11-03'],
+      [1200, '2026-11-02'],
+    ]);
+    expect(result.rows.map((row) => row.accountName)).toEqual([
+      'Visa',
+      'Checking',
+    ]);
+    expect(result.rows.map((row) => row.accountType)).toEqual([
+      'credit',
+      'checking',
+    ]);
+  });
+
+  it('sorts same-day rows by id descending, not insertion order', async () => {
+    const { db, ledger, checking } = await setup();
+    await db.entries.bulkAdd([
+      {
+        id: 'entry-b',
+        kind: 'expense',
+        date: '2026-11-05',
+        amountMinor: 200,
+        accountId: checking.id,
+        categoryId: 'cat_groceries',
+      },
+      {
+        id: 'entry-a',
+        kind: 'expense',
+        date: '2026-11-05',
+        amountMinor: 100,
+        accountId: checking.id,
+        categoryId: 'cat_groceries',
+      },
+    ]);
+
+    const result = await ledger.categoryEntries('2026-11', 'cat_groceries');
+
+    expect(result.rows.map((row) => row.id)).toEqual(['entry-b', 'entry-a']);
+    expect(result.rows.reduce((sum, row) => sum + row.amountMinor, 0)).toBe(
+      result.totalMinor,
+    );
+  });
+
+  it('matches the month summary total for every row of a mixed month', async () => {
+    const { ledger, checking, card } = await setup();
+    await ledger.addExpense({
+      amountMinor: 1200,
+      categoryId: 'cat_groceries',
+      accountId: checking.id,
+      date: '2026-11-02',
+    });
+    await ledger.addExpense({
+      amountMinor: 800,
+      categoryId: 'cat_groceries',
+      accountId: card.id,
+      date: '2026-11-03',
+    });
+    await ledger.addExpense({
+      amountMinor: 500,
+      categoryId: 'cat_transport',
+      accountId: card.id,
+      date: '2026-11-04',
+    });
+
+    const summary = await ledger.monthSummary('2026-11');
+
+    expect(summary.totalMinor).toBe(2500);
+    for (const row of summary.rows) {
+      const list = await ledger.categoryEntries('2026-11', row.categoryId);
+      expect(list.totalMinor).toBe(row.amountMinor);
+    }
+  });
+
+  it('returns an empty list with the resolved category name', async () => {
+    const { ledger } = await setup();
+
+    expect(await ledger.categoryEntries('2026-11', 'cat_transport')).toEqual({
+      month: '2026-11',
+      categoryId: 'cat_transport',
+      categoryName: 'Transport',
+      totalMinor: 0,
+      rows: [],
+    });
+  });
+
+  it('throws RangeError for a malformed month', async () => {
+    const { ledger } = await setup();
+
+    await expect(
+      ledger.categoryEntries('2026-13', 'cat_groceries'),
+    ).rejects.toThrow(RangeError);
+  });
+
+  it('groups a raw entry without a category under the sentinel', async () => {
+    const { db, ledger, checking } = await setup();
+    await db.entries.add({
+      id: 'entry-orphan-category',
+      kind: 'expense',
+      date: '2026-11-02',
+      amountMinor: 750,
+      accountId: checking.id,
+    });
+
+    const result = await ledger.categoryEntries(
+      '2026-11',
+      UNCATEGORIZED_CATEGORY_ID,
+    );
+
+    expect(result.categoryName).toBe(UNCATEGORIZED_LABEL);
+    expect(result.totalMinor).toBe(750);
+    expect(result.rows).toEqual([
+      {
+        id: 'entry-orphan-category',
+        date: '2026-11-02',
+        amountMinor: 750,
+        accountId: checking.id,
+        accountName: 'Checking',
+        accountType: 'checking',
+      },
+    ]);
+    expect((await ledger.monthSummary('2026-11')).rows).toEqual([
+      {
+        categoryId: UNCATEGORIZED_CATEGORY_ID,
+        name: UNCATEGORIZED_LABEL,
+        amountMinor: 750,
+      },
+    ]);
+  });
+
+  it('degrades a missing account to Unknown account and keeps the amount', async () => {
+    const { db, ledger } = await setup();
+    await db.entries.add({
+      id: 'entry-orphan-account',
+      kind: 'expense',
+      date: '2026-11-02',
+      amountMinor: 4500,
+      accountId: 'acct-missing',
+      categoryId: 'cat_groceries',
+    });
+
+    const result = await ledger.categoryEntries('2026-11', 'cat_groceries');
+
+    expect(result.rows).toEqual([
+      {
+        id: 'entry-orphan-account',
+        date: '2026-11-02',
+        amountMinor: 4500,
+        accountId: 'acct-missing',
+        accountName: 'Unknown account',
+        accountType: null,
+      },
+    ]);
+    expect(result.totalMinor).toBe(4500);
+  });
+
+  it('degrades a missing category to Uncategorized and keeps the amount', async () => {
+    const { db, ledger, checking } = await setup();
+    await db.entries.add({
+      id: 'entry-orphan-category-row',
+      kind: 'expense',
+      date: '2026-11-02',
+      amountMinor: 300,
+      accountId: checking.id,
+      categoryId: 'cat_missing',
+    });
+
+    const result = await ledger.categoryEntries('2026-11', 'cat_missing');
+
+    expect(result.categoryName).toBe(UNCATEGORIZED_LABEL);
+    expect(result.totalMinor).toBe(300);
+  });
+
+  it('resolves an archived category name', async () => {
+    const { db, ledger, checking } = await setup();
+    await db.categories.update('cat_groceries', { archived: true });
+    await ledger.addExpense({
+      amountMinor: 100,
+      categoryId: 'cat_groceries',
+      accountId: checking.id,
+      date: '2026-11-02',
+    });
+
+    expect(
+      (await ledger.categoryEntries('2026-11', 'cat_groceries')).categoryName,
+    ).toBe('Groceries');
+  });
+
+  it('ignores non-expense kinds', async () => {
+    const { db, ledger, checking } = await setup();
+    await db.entries.bulkAdd([
+      {
+        id: 'entry-income',
+        kind: 'income',
+        date: '2026-11-01',
+        amountMinor: 1000,
+        accountId: checking.id,
+        categoryId: 'cat_groceries',
+      },
+      {
+        id: 'entry-opening',
+        kind: 'opening',
+        date: '2026-11-02',
+        amountMinor: -3000,
+        accountId: checking.id,
+      },
+      {
+        id: 'entry-expense',
+        kind: 'expense',
+        date: '2026-11-03',
+        amountMinor: 400,
+        accountId: checking.id,
+        categoryId: 'cat_groceries',
+      },
+    ]);
+
+    const result = await ledger.categoryEntries('2026-11', 'cat_groceries');
+
+    expect(result.rows.map((row) => row.id)).toEqual(['entry-expense']);
+    expect(result.totalMinor).toBe(400);
+  });
+});
+
+describe('getEntry', () => {
+  it('returns the stored row for a known id', async () => {
+    const db = openDatabase();
+    const ledger = createLedger(db);
+    await ledger.initialize();
+    const account = await ledger.addAccount({
+      name: 'Checking',
+      type: 'checking',
+    });
+    const entry = await ledger.addExpense({
+      amountMinor: 1234,
+      categoryId: 'cat_groceries',
+      accountId: account.id,
+      date: '2026-11-02',
+    });
+
+    expect(await ledger.getEntry(entry.id)).toEqual(entry);
+  });
+
+  it('returns null, never undefined, for an unknown id', async () => {
+    const db = openDatabase();
+    const ledger = createLedger(db);
+    await ledger.initialize();
+
+    const result = await ledger.getEntry('missing');
+
+    expect(result).toBeNull();
+    expect(result).not.toBeUndefined();
+  });
+
+  it('returns a non-expense row unchanged', async () => {
+    const db = openDatabase();
+    const ledger = createLedger(db);
+    await ledger.initialize();
+    const income: Entry = {
+      id: 'entry-income',
+      kind: 'income',
+      date: '2026-11-02',
+      amountMinor: 5000,
+      accountId: 'acct-1',
+      categoryId: 'cat_other',
+    };
+    await db.entries.add(income);
+
+    expect(await ledger.getEntry('entry-income')).toEqual(income);
+  });
+});
+
+describe('updateExpense', () => {
+  async function setup() {
+    const db = openDatabase();
+    const ledger = createLedger(db);
+    await ledger.initialize();
+    const checking = await ledger.addAccount({
+      name: 'Checking',
+      type: 'checking',
+    });
+    const card = await ledger.addAccount({ name: 'Visa', type: 'credit' });
+    return { db, ledger, checking, card };
+  }
+
+  it('overwrites the four fields and preserves identity', async () => {
+    const { db, ledger, checking, card } = await setup();
+    const entry = await ledger.addExpense({
+      amountMinor: 1000,
+      categoryId: 'cat_groceries',
+      accountId: checking.id,
+      date: '2026-11-02',
+    });
+
+    const updated = await ledger.updateExpense(entry.id, {
+      amountMinor: 450,
+      categoryId: 'cat_eating_out',
+      accountId: card.id,
+      date: '2026-11-03',
+    });
+
+    expect(updated).toEqual({
+      id: entry.id,
+      kind: 'expense',
+      date: '2026-11-03',
+      amountMinor: 450,
+      accountId: card.id,
+      categoryId: 'cat_eating_out',
+    });
+    expect(await db.entries.get(entry.id)).toEqual(updated);
+  });
+
+  it('leaves every other entry untouched', async () => {
+    const { db, ledger, checking } = await setup();
+    const first = await ledger.addExpense({
+      amountMinor: 1000,
+      categoryId: 'cat_groceries',
+      accountId: checking.id,
+      date: '2026-11-02',
+    });
+    const second = await ledger.addExpense({
+      amountMinor: 500,
+      categoryId: 'cat_transport',
+      accountId: checking.id,
+      date: '2026-11-05',
+    });
+    const before = await db.entries.get(second.id);
+
+    await ledger.updateExpense(first.id, {
+      amountMinor: 2000,
+      categoryId: 'cat_fun',
+      accountId: checking.id,
+      date: '2026-11-04',
+    });
+
+    expect(await db.entries.get(second.id)).toEqual(before);
+  });
+
+  it('moves an amount between category rows and between months', async () => {
+    const { ledger, checking, card } = await setup();
+    const entry = await ledger.addExpense({
+      amountMinor: 1000,
+      categoryId: 'cat_groceries',
+      accountId: checking.id,
+      date: '2026-11-02',
+    });
+    await ledger.addExpense({
+      amountMinor: 500,
+      categoryId: 'cat_transport',
+      accountId: card.id,
+      date: '2026-11-05',
+    });
+
+    await ledger.updateExpense(entry.id, {
+      amountMinor: 700,
+      categoryId: 'cat_transport',
+      accountId: card.id,
+      date: '2026-12-01',
+    });
+
+    expect(await ledger.monthSummary('2026-11')).toEqual({
+      month: '2026-11',
+      totalMinor: 500,
+      rows: [
+        { categoryId: 'cat_transport', name: 'Transport', amountMinor: 500 },
+      ],
+    });
+    expect(await ledger.monthSummary('2026-12')).toEqual({
+      month: '2026-12',
+      totalMinor: 700,
+      rows: [
+        { categoryId: 'cat_transport', name: 'Transport', amountMinor: 700 },
+      ],
+    });
+  });
+
+  it('rejects an unknown id before anything else', async () => {
+    const { ledger } = await setup();
+
+    const error = await ledger
+      .updateExpense('missing', {
+        amountMinor: 0,
+        categoryId: 'cat_groceries',
+        accountId: 'acct-missing',
+        date: '2026-02-30',
+      })
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(LedgerError);
+    expect(error).toMatchObject({ code: 'unknown-entry' });
+  });
+
+  it('rejects a raw non-expense row', async () => {
+    const { db, ledger, checking } = await setup();
+    await db.entries.add({
+      id: 'entry-income',
+      kind: 'income',
+      date: '2026-11-02',
+      amountMinor: 1000,
+      accountId: checking.id,
+      categoryId: 'cat_other',
+    });
+
+    const error = await ledger
+      .updateExpense('entry-income', {
+        amountMinor: 1000,
+        categoryId: 'cat_other',
+        accountId: checking.id,
+        date: '2026-11-02',
+      })
+      .catch((caught: unknown) => caught);
+
+    expect(error).toMatchObject({ code: 'unsupported-entry-kind' });
+  });
+
+  it.each([
+    [{ amountMinor: 0 }, 'invalid-amount'],
+    [{ date: '2026-02-30' }, 'invalid-date'],
+    [{ accountId: 'acct-missing' }, 'unknown-account'],
+    [{ categoryId: 'cat_missing' }, 'unknown-category'],
+  ] as const)('rejects %j with %s', async (override, code) => {
+    const { db, ledger, checking } = await setup();
+    const entry = await ledger.addExpense({
+      amountMinor: 1000,
+      categoryId: 'cat_groceries',
+      accountId: checking.id,
+      date: '2026-11-02',
+    });
+
+    const error = await ledger
+      .updateExpense(entry.id, {
+        amountMinor: 1000,
+        categoryId: 'cat_groceries',
+        accountId: checking.id,
+        date: '2026-11-02',
+        ...override,
+      })
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(LedgerError);
+    expect(error).toMatchObject({ code });
+    expect(await db.entries.get(entry.id)).toEqual(entry);
+  });
+
+  it('reports an invalid amount before an unknown account', async () => {
+    const { ledger, checking } = await setup();
+    const entry = await ledger.addExpense({
+      amountMinor: 1000,
+      categoryId: 'cat_groceries',
+      accountId: checking.id,
+      date: '2026-11-02',
+    });
+
+    const error = await ledger
+      .updateExpense(entry.id, {
+        amountMinor: -5,
+        categoryId: 'cat_groceries',
+        accountId: 'acct-missing',
+        date: '2026-11-02',
+      })
+      .catch((caught: unknown) => caught);
+
+    expect(error).toMatchObject({ code: 'invalid-amount' });
+  });
+
+  it('succeeds when saving identical values', async () => {
+    const { ledger, checking } = await setup();
+    const entry = await ledger.addExpense({
+      amountMinor: 1000,
+      categoryId: 'cat_groceries',
+      accountId: checking.id,
+      date: '2026-11-02',
+    });
+
+    expect(
+      await ledger.updateExpense(entry.id, {
+        amountMinor: 1000,
+        categoryId: 'cat_groceries',
+        accountId: checking.id,
+        date: '2026-11-02',
+      }),
+    ).toEqual(entry);
+  });
+
+  it('does not change settings.lastAccountId', async () => {
+    const { db, ledger, checking, card } = await setup();
+    const entry = await ledger.addExpense({
+      amountMinor: 1000,
+      categoryId: 'cat_groceries',
+      accountId: checking.id,
+      date: '2026-11-02',
+    });
+
+    await ledger.updateExpense(entry.id, {
+      amountMinor: 1000,
+      categoryId: 'cat_groceries',
+      accountId: card.id,
+      date: '2026-11-02',
+    });
+    await ledger.deleteExpense(entry.id);
+
+    expect((await db.settings.get('app'))?.lastAccountId).toBe(checking.id);
+  });
+});
+
+describe('deleteExpense', () => {
+  async function setup() {
+    const db = openDatabase();
+    const ledger = createLedger(db);
+    await ledger.initialize();
+    const checking = await ledger.addAccount({
+      name: 'Checking',
+      type: 'checking',
+    });
+    return { db, ledger, checking };
+  }
+
+  it('removes exactly one row and returns its snapshot', async () => {
+    const { db, ledger, checking } = await setup();
+    const first = await ledger.addExpense({
+      amountMinor: 1000,
+      categoryId: 'cat_groceries',
+      accountId: checking.id,
+      date: '2026-11-02',
+    });
+    const second = await ledger.addExpense({
+      amountMinor: 500,
+      categoryId: 'cat_groceries',
+      accountId: checking.id,
+      date: '2026-11-03',
+    });
+
+    const removed = await ledger.deleteExpense(first.id);
+
+    expect(removed).toEqual(first);
+    expect(await db.entries.get(first.id)).toBeUndefined();
+    expect(await ledger.getEntry(second.id)).toEqual(second);
+    expect(await ledger.monthSummary('2026-11')).toEqual({
+      month: '2026-11',
+      totalMinor: 500,
+      rows: [
+        { categoryId: 'cat_groceries', name: 'Groceries', amountMinor: 500 },
+      ],
+    });
+  });
+
+  it('empties the month when it was the last entry', async () => {
+    const { ledger, checking } = await setup();
+    const entry = await ledger.addExpense({
+      amountMinor: 1000,
+      categoryId: 'cat_groceries',
+      accountId: checking.id,
+      date: '2026-11-02',
+    });
+
+    await ledger.deleteExpense(entry.id);
+
+    expect(await ledger.monthSummary('2026-11')).toEqual({
+      month: '2026-11',
+      totalMinor: 0,
+      rows: [],
+    });
+  });
+
+  it('rejects an unknown id', async () => {
+    const { ledger } = await setup();
+
+    const error = await ledger
+      .deleteExpense('missing')
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(LedgerError);
+    expect(error).toMatchObject({ code: 'unknown-entry' });
+  });
+
+  it('rejects a raw non-expense row and keeps it', async () => {
+    const { db, ledger, checking } = await setup();
+    const opening: Entry = {
+      id: 'entry-opening',
+      kind: 'opening',
+      date: '2026-11-02',
+      amountMinor: -3000,
+      accountId: checking.id,
+    };
+    await db.entries.add(opening);
+
+    const error = await ledger
+      .deleteExpense('entry-opening')
+      .catch((caught: unknown) => caught);
+
+    expect(error).toMatchObject({ code: 'unsupported-entry-kind' });
+    expect(await db.entries.get('entry-opening')).toEqual(opening);
   });
 });

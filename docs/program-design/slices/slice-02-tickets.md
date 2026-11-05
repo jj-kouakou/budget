@@ -5,7 +5,8 @@
   sections are cited per ticket), `docs/architecture/slices/slice-02-architecture.md`,
   `docs/standards.md`
 - **Branch:** `slice-02`
-- **Status:** ready to build
+- **Status:** complete. All 6 tickets built, tested, and reviewed on
+  `slice-02`; merged to `master` and tagged `slice-02-complete` on 2026-11-04.
 
 Each ticket is one build session, test-first, and one commit when its tests
 pass. Tickets are ordered by dependency, not by spec section order. Tickets 1
@@ -145,11 +146,11 @@ new screens need.
 
 **Acceptance criteria**
 
-- [ ] `npm run test` and `npm run typecheck` pass, including every existing
+- [x] `npm run test` and `npm run typecheck` pass, including every existing
       slice-1 ledger and UI test unchanged.
-- [ ] `monthSummary` output is identical before and after the literal
+- [x] `monthSummary` output is identical before and after the literal
       replacement (existing tests are the proof).
-- [ ] No UI file changed.
+- [x] No UI file changed.
 
 ---
 
@@ -195,9 +196,9 @@ validation the add path uses and no other row touched.
 
 **Acceptance criteria**
 
-- [ ] Every `addExpense` test from slice 1 passes with no edits.
-- [ ] Update and delete never write `settings`.
-- [ ] No schema, index, or version change.
+- [x] Every `addExpense` test from slice 1 passes with no edits.
+- [x] Update and delete never write `settings`.
+- [x] No schema, index, or version change.
 
 ---
 
@@ -233,9 +234,9 @@ is byte-for-byte unchanged.
 
 **Acceptance criteria**
 
-- [ ] `AddExpenseScreen.test.tsx` passes with zero edits.
-- [ ] No duplicated field markup remains in `AddExpenseScreen.tsx`.
-- [ ] `expenseFieldErrors` maps the four field codes and returns `null` for
+- [x] `AddExpenseScreen.test.tsx` passes with zero edits.
+- [x] No duplicated field markup remains in `AddExpenseScreen.tsx`.
+- [x] `expenseFieldErrors` maps the four field codes and returns `null` for
       everything else (observed through the add tests and later the editor).
 
 ---
@@ -283,11 +284,11 @@ Back, list row), §11.1, §12.2, §12.3, §12.8, §13.5, §13.6 (list bullets).
 
 **Acceptance criteria**
 
-- [ ] In `npm run dev`, home → list → Back round-trips the same month in a real
+- [x] In `npm run dev`, home → list → Back round-trips the same month in a real
       browser, including a month reached with the month arrows.
-- [ ] The list total is asserted equal to the tapped home row, not to a
+- [x] The list total is asserted equal to the tapped home row, not to a
       separately computed sum.
-- [ ] No entry row offers an edit affordance beyond the row itself.
+- [x] No entry row offers an edit affordance beyond the row itself.
 
 ---
 
@@ -348,11 +349,11 @@ save, not-found), §11.2, §11.3, §11.5, §11.6, §11.7, §12.4, §12.6, §12.7
 
 **Acceptance criteria**
 
-- [ ] In `npm run dev`, open a real entry, change only the amount, save, and
+- [x] In `npm run dev`, open a real entry, change only the amount, save, and
       observe the new list total and the home row without a refresh.
-- [ ] The save destination uses the validated category, not
+- [x] The save destination uses the validated category, not
       `updated.categoryId`.
-- [ ] The editor never reads or writes `settings.lastAccountId`; the ledger
+- [x] The editor never reads or writes `settings.lastAccountId`; the ledger
       guarantee is asserted in ticket 2.
 
 ---
@@ -398,10 +399,10 @@ category list, or on that month's home when the category is now empty.
 
 **Acceptance criteria**
 
-- [ ] In `npm run dev`, remove an entry, then confirm the home total, the
+- [x] In `npm run dev`, remove an entry, then confirm the home total, the
       category row, and the month's empty state all match expectations.
-- [ ] The confirmation never reads form state.
-- [ ] No undo, tombstone, or history row exists after removal.
+- [x] The confirmation never reads form state.
+- [x] No undo, tombstone, or history row exists after removal.
 
 ---
 

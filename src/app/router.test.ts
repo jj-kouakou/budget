@@ -19,6 +19,26 @@ describe('parseHash', () => {
     ['#/add?m=2026-11', { name: 'add' }],
     ['#/accounts', { name: 'accounts' }],
     ['#/accounts?x=1', { name: 'accounts' }],
+    [
+      '#/category?m=2026-11&c=cat_groceries',
+      { name: 'category', month: '2026-11', categoryId: 'cat_groceries' },
+    ],
+    [
+      '#/category?c=cat_groceries',
+      { name: 'category', month: '2026-11', categoryId: 'cat_groceries' },
+    ],
+    [
+      '#/category?m=bad&c=cat_groceries',
+      { name: 'category', month: '2026-11', categoryId: 'cat_groceries' },
+    ],
+    ['#/category?m=2026-11', { name: 'home', month: '2026-11' }],
+    ['#/category?m=2026-11&c=', { name: 'home', month: '2026-11' }],
+    ['#/entry/3f1c-abc', { name: 'entry', entryId: '3f1c-abc' }],
+    ['#/entry/3f1c-abc?m=2026-11', { name: 'entry', entryId: '3f1c-abc' }],
+    ['#/entry/abc%2Fdef', { name: 'entry', entryId: 'abc/def' }],
+    ['#/entry/', { name: 'home', month: '2026-11' }],
+    ['#/entry/a/b', { name: 'home', month: '2026-11' }],
+    ['#/entry/%E0%A4%A', { name: 'home', month: '2026-11' }],
     ['#/nope', { name: 'home', month: '2026-11' }],
     ['#/add/', { name: 'home', month: '2026-11' }],
     ['#//', { name: 'home', month: '2026-11' }],
@@ -34,6 +54,35 @@ describe('routeToHash', () => {
     );
     expect(routeToHash({ name: 'add' })).toBe('#/add');
     expect(routeToHash({ name: 'accounts' })).toBe('#/accounts');
+    expect(
+      routeToHash({
+        name: 'category',
+        month: '2026-11',
+        categoryId: 'cat_groceries',
+      }),
+    ).toBe('#/category?m=2026-11&c=cat_groceries');
+    expect(routeToHash({ name: 'entry', entryId: '3f1c-abc' })).toBe(
+      '#/entry/3f1c-abc',
+    );
+  });
+
+  it('round-trips a category id containing reserved characters', () => {
+    const route = {
+      name: 'category' as const,
+      month: '2026-11',
+      categoryId: 'cat &? #/space',
+    };
+
+    expect(parseHash(routeToHash(route), '2026-11-02')).toEqual(route);
+  });
+
+  it('round-trips an entry id containing reserved characters', () => {
+    const route = {
+      name: 'entry' as const,
+      entryId: 'entry &? #/space',
+    };
+
+    expect(parseHash(routeToHash(route), '2026-11-02')).toEqual(route);
   });
 });
 
