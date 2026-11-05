@@ -321,7 +321,7 @@ function EntryForm({
             </button>
             <button
               type="button"
-              disabled={submitting}
+              disabled={submitting || deleting}
               onClick={() =>
                 navigate({
                   name: 'category',
@@ -335,7 +335,7 @@ function EntryForm({
             </button>
             <button
               type="button"
-              disabled={submitting}
+              disabled={submitting || deleting}
               onClick={() => setConfirmingDelete(true)}
             >
               Remove entry
