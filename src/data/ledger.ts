@@ -83,6 +83,8 @@ export interface Ledger {
   renameAccount(id: string, name: string): Promise<void>;
   listCategories(): Promise<Category[]>;
   addExpense(input: ExpenseInput): Promise<Entry>;
+  updateExpense(id: string, input: ExpenseInput): Promise<Entry>;
+  deleteExpense(id: string): Promise<Entry>;
   getEntry(id: string): Promise<Entry | null>;
   categoryEntries(
     month: MonthKey,
@@ -106,6 +108,34 @@ function requireAccountName(name: string): string {
 }
 
 export function createLedger(db: BudgetDatabase): Ledger {
+  async function requireExpenseFields(input: ExpenseInput): Promise<void> {
+    if (!Number.isSafeInteger(input.amountMinor) || input.amountMinor <= 0) {
+      throw new LedgerError(
+        'invalid-amount',
+        'Enter an amount greater than zero.',
+      );
+    }
+    if (!isValidLocalDate(input.date)) {
+      throw new LedgerError('invalid-date', 'Choose a valid date.');
+    }
+
+    const account = await db.accounts.get(input.accountId);
+    if (!account) {
+      throw new LedgerError(
+        'unknown-account',
+        'That account no longer exists. Choose another.',
+      );
+    }
+
+    const category = await db.categories.get(input.categoryId);
+    if (!category) {
+      throw new LedgerError(
+        'unknown-category',
+        'That category no longer exists. Choose another.',
+      );
+    }
+  }
+
   return {
     async initialize() {
       await db.transaction('rw', db.settings, db.categories, async () => {
@@ -190,34 +220,7 @@ export function createLedger(db: BudgetDatabase): Ledger {
         db.entries,
         db.settings,
         async () => {
-          if (
-            !Number.isSafeInteger(input.amountMinor) ||
-            input.amountMinor <= 0
-          ) {
-            throw new LedgerError(
-              'invalid-amount',
-              'Enter an amount greater than zero.',
-            );
-          }
-          if (!isValidLocalDate(input.date)) {
-            throw new LedgerError('invalid-date', 'Choose a valid date.');
-          }
-
-          const account = await db.accounts.get(input.accountId);
-          if (!account) {
-            throw new LedgerError(
-              'unknown-account',
-              'That account no longer exists. Choose another.',
-            );
-          }
-
-          const category = await db.categories.get(input.categoryId);
-          if (!category) {
-            throw new LedgerError(
-              'unknown-category',
-              'That category no longer exists. Choose another.',
-            );
-          }
+          await requireExpenseFields(input);
 
           const entry: Entry = {
             id: crypto.randomUUID(),
@@ -295,6 +298,74 @@ export function createLedger(db: BudgetDatabase): Ledger {
         totalMinor: rows.reduce((sum, row) => sum + row.amountMinor, 0),
         rows,
       };
+    },
+
+    async updateExpense(id, input) {
+      return db.transaction(
+        'rw',
+        db.accounts,
+        db.categories,
+        db.entries,
+        async () => {
+          const existing = await db.entries.get(id);
+          if (!existing) {
+            throw new LedgerError(
+              'unknown-entry',
+              'That entry no longer exists.',
+            );
+          }
+          if (existing.kind !== 'expense') {
+            throw new LedgerError(
+              'unsupported-entry-kind',
+              'Only expenses can be corrected or removed.',
+            );
+          }
+
+          await requireExpenseFields(input);
+
+          const updated = await db.entries.update(id, {
+            date: input.date,
+            amountMinor: input.amountMinor,
+            accountId: input.accountId,
+            categoryId: input.categoryId,
+          });
+          if (updated === 0) {
+            throw new LedgerError(
+              'unknown-entry',
+              'That entry no longer exists.',
+            );
+          }
+
+          return {
+            ...existing,
+            date: input.date,
+            amountMinor: input.amountMinor,
+            accountId: input.accountId,
+            categoryId: input.categoryId,
+          };
+        },
+      );
+    },
+
+    async deleteExpense(id) {
+      return db.transaction('rw', db.entries, async () => {
+        const existing = await db.entries.get(id);
+        if (!existing) {
+          throw new LedgerError(
+            'unknown-entry',
+            'That entry no longer exists.',
+          );
+        }
+        if (existing.kind !== 'expense') {
+          throw new LedgerError(
+            'unsupported-entry-kind',
+            'Only expenses can be corrected or removed.',
+          );
+        }
+
+        await db.entries.delete(id);
+        return existing;
+      });
     },
 
     async getEntry(id) {
