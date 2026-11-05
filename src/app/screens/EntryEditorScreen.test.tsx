@@ -95,6 +95,33 @@ describe('EntryEditorScreen', () => {
     ).toHaveAccessibleName(/4\.50$/);
   });
 
+  it('edits a credit-card entry the same way', async () => {
+    const card = await ledger.addAccount({ name: 'Visa', type: 'credit' });
+    const entry = await ledger.addExpense({
+      amountMinor: 2500,
+      categoryId: 'cat_groceries',
+      accountId: card.id,
+      date: '2026-11-02',
+    });
+    const user = await openFromCategoryList(
+      /25\.00 on 2026-11-02, Visa/,
+    );
+
+    await user.clear(screen.getByLabelText('Amount'));
+    await user.type(screen.getByLabelText('Amount'), '20.00');
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    await waitFor(() =>
+      expect(window.location.hash).toBe(
+        '#/category?m=2026-11&c=cat_groceries',
+      ),
+    );
+    expect((await db.entries.get(entry.id))?.amountMinor).toBe(2000);
+    expect((await screen.findByText('Spent')).closest('.spent')).toHaveTextContent(
+      '20.00',
+    );
+  });
+
   it('moves an amount between categories and lands on the new list', async () => {
     const entry = await addExpense(4500, 'cat_groceries', '2026-11-02');
     const user = await openFromCategoryList(

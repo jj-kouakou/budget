@@ -12,6 +12,7 @@ React Testing Library. Pinned by `docs/adr/0001` and `0005`.
 - `docs/program-design/` — `slices/` (spec + tickets per slice)
 - `docs/adr/` — one file per decision, numbered
 - `docs/external/` — env vars, test accounts, non-code facts
+- `docs/agents/` — one handoff per completed gate
 - `CONTEXT.md` — ubiquitous-language glossary (created at first resolved term)
 
 ## Workflow
