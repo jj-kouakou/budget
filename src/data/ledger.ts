@@ -16,12 +16,32 @@ export interface AddAccountInput {
   type: AccountType;
 }
 
-export interface AddExpenseInput {
+export interface ExpenseInput {
   amountMinor: number;
   categoryId: string;
   accountId: string;
   date: LocalDate;
 }
+
+export interface EntryListItem {
+  id: string;
+  date: LocalDate;
+  amountMinor: number;
+  accountId: string;
+  accountName: string;
+  accountType: AccountType | null;
+}
+
+export interface CategoryEntries {
+  month: MonthKey;
+  categoryId: string;
+  categoryName: string;
+  totalMinor: number;
+  rows: EntryListItem[];
+}
+
+export const UNCATEGORIZED_CATEGORY_ID = '__uncategorized__';
+export const UNCATEGORIZED_LABEL = 'Uncategorized';
 
 export interface CategorySpend {
   categoryId: string;
@@ -41,7 +61,9 @@ export type LedgerErrorCode =
   | 'invalid-amount'
   | 'invalid-date'
   | 'unknown-account'
-  | 'unknown-category';
+  | 'unknown-category'
+  | 'unknown-entry'
+  | 'unsupported-entry-kind';
 
 export class LedgerError extends Error {
   readonly name = 'LedgerError';
@@ -60,7 +82,12 @@ export interface Ledger {
   addAccount(input: AddAccountInput): Promise<Account>;
   renameAccount(id: string, name: string): Promise<void>;
   listCategories(): Promise<Category[]>;
-  addExpense(input: AddExpenseInput): Promise<Entry>;
+  addExpense(input: ExpenseInput): Promise<Entry>;
+  getEntry(id: string): Promise<Entry | null>;
+  categoryEntries(
+    month: MonthKey,
+    categoryId: string,
+  ): Promise<CategoryEntries>;
   monthSummary(month: MonthKey): Promise<MonthSummary>;
   getSettings(): Promise<Settings>;
 }
@@ -231,12 +258,12 @@ export function createLedger(db: BudgetDatabase): Ledger {
         if (entry.kind !== 'expense') {
           continue;
         }
-        const categoryId = entry.categoryId ?? '__uncategorized__';
+        const categoryId = entry.categoryId ?? UNCATEGORIZED_CATEGORY_ID;
         totals.set(categoryId, (totals.get(categoryId) ?? 0) + entry.amountMinor);
       }
 
       const categoryIds = [...totals.keys()].filter(
-        (id) => id !== '__uncategorized__',
+        (id) => id !== UNCATEGORIZED_CATEGORY_ID,
       );
       const categories = await db.categories.bulkGet(categoryIds);
       const names = new Map<string, string>();
@@ -250,9 +277,9 @@ export function createLedger(db: BudgetDatabase): Ledger {
       const rows = [...totals].map(([categoryId, amountMinor]) => ({
         categoryId,
         name:
-          categoryId === '__uncategorized__'
-            ? 'Uncategorized'
-            : (names.get(categoryId) ?? 'Uncategorized'),
+          categoryId === UNCATEGORIZED_CATEGORY_ID
+            ? UNCATEGORIZED_LABEL
+            : (names.get(categoryId) ?? UNCATEGORIZED_LABEL),
         amountMinor,
       }));
 
@@ -265,6 +292,72 @@ export function createLedger(db: BudgetDatabase): Ledger {
 
       return {
         month,
+        totalMinor: rows.reduce((sum, row) => sum + row.amountMinor, 0),
+        rows,
+      };
+    },
+
+    async getEntry(id) {
+      const entry = await db.entries.get(id);
+      return entry ?? null;
+    },
+
+    async categoryEntries(month, categoryId) {
+      if (!isValidMonthKey(month)) {
+        throw new RangeError('Invalid month key');
+      }
+
+      const monthEntries = await db.entries
+        .where('date')
+        .startsWith(month)
+        .toArray();
+
+      const kept = monthEntries
+        .filter((entry) => entry.kind === 'expense')
+        .filter(
+          (entry) =>
+            (entry.categoryId ?? UNCATEGORIZED_CATEGORY_ID) === categoryId,
+        )
+        .sort(
+          (left, right) =>
+            right.date.localeCompare(left.date) ||
+            right.id.localeCompare(left.id),
+        );
+
+      const accountIds = [...new Set(kept.map((entry) => entry.accountId))];
+      const accounts = await db.accounts.bulkGet(accountIds);
+      const accountById = new Map<string, Account>();
+      accounts.forEach((account, index) => {
+        const accountId = accountIds[index];
+        if (account && accountId !== undefined) {
+          accountById.set(accountId, account);
+        }
+      });
+
+      let categoryName: string;
+      if (categoryId === UNCATEGORIZED_CATEGORY_ID) {
+        categoryName = UNCATEGORIZED_LABEL;
+      } else {
+        const category = await db.categories.get(categoryId);
+        categoryName = category?.name ?? UNCATEGORIZED_LABEL;
+      }
+
+      const rows: EntryListItem[] = kept.map((entry) => {
+        const account = accountById.get(entry.accountId);
+        return {
+          id: entry.id,
+          date: entry.date,
+          amountMinor: entry.amountMinor,
+          accountId: entry.accountId,
+          accountName: account?.name ?? 'Unknown account',
+          accountType: account?.type ?? null,
+        };
+      });
+
+      return {
+        month,
+        categoryId,
+        categoryName,
         totalMinor: rows.reduce((sum, row) => sum + row.amountMinor, 0),
         rows,
       };
