@@ -9,6 +9,7 @@ import {
 import { formatAmount } from '../../domain/money';
 import type { Ledger } from '../../data/ledger';
 import { navigate } from '../router';
+import { useStorageStatus } from '../storage';
 
 export function HomeScreen({
   ledger,
@@ -22,6 +23,7 @@ export function HomeScreen({
     [ledger, month],
   );
   const settings = useLiveQuery(() => ledger.getSettings(), [ledger]);
+  const storageStatus = useStorageStatus();
 
   if (summary === undefined || settings === undefined) {
     return <p>Loading…</p>;
@@ -36,6 +38,17 @@ export function HomeScreen({
   return (
     <section>
       <h1>{formatMonth(month)}</h1>
+
+      {storageStatus === 'at-risk' || storageStatus === 'unknown' ? (
+        <p className="storage-warning">
+          {storageStatus === 'at-risk'
+            ? 'This phone may discard your ledger.'
+            : "This browser can't confirm it will keep your ledger."}{' '}
+          <button type="button" onClick={() => navigate({ name: 'backup' })}>
+            Back up now
+          </button>
+        </p>
+      ) : null}
 
       <div className="month-controls">
         <button

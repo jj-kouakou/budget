@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   MAX_MONTH,
   MIN_MONTH,
@@ -228,5 +228,108 @@ describe('HomeScreen backup action', () => {
     await user.click(screen.getByRole('button', { name: 'Backup' }));
 
     expect(window.location.hash).toBe('#/backup');
+  });
+});
+
+describe('HomeScreen storage warning', () => {
+  const originalStorage = Object.getOwnPropertyDescriptor(
+    navigator,
+    'storage',
+  );
+
+  function setStorage(storage: unknown): void {
+    Object.defineProperty(navigator, 'storage', {
+      configurable: true,
+      value: storage,
+    });
+  }
+
+  afterEach(() => {
+    if (originalStorage) {
+      Object.defineProperty(navigator, 'storage', originalStorage);
+    } else {
+      Reflect.deleteProperty(navigator, 'storage');
+    }
+  });
+
+  it('warns when the browser may discard the ledger and links to backup', async () => {
+    const user = userEvent.setup();
+    setStorage({
+      persist: vi.fn().mockResolvedValue(false),
+      persisted: vi.fn().mockResolvedValue(false),
+    });
+    render(<HomeScreen ledger={ledger} month="2026-11" />);
+
+    expect(
+      await screen.findByText('This phone may discard your ledger.'),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Back up now' }));
+
+    expect(window.location.hash).toBe('#/backup');
+  });
+
+  it('warns when the browser cannot confirm storage status', async () => {
+    setStorage(undefined);
+    render(<HomeScreen ledger={ledger} month="2026-11" />);
+
+    expect(
+      await screen.findByText(
+        "This browser can't confirm it will keep your ledger.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('renders nothing when storage is persisted', async () => {
+    setStorage({
+      persist: vi.fn().mockResolvedValue(true),
+      persisted: vi.fn().mockResolvedValue(true),
+    });
+    render(<HomeScreen ledger={ledger} month="2026-11" />);
+    await screen.findByText('No spending yet this month.');
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('button', { name: 'Back up now' }),
+      ).not.toBeInTheDocument();
+    });
+
+    expect(
+      screen.queryByText('This phone may discard your ledger.'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('never flashes the warning while the status is undefined', async () => {
+    const persisted = Promise.withResolvers<boolean>();
+    setStorage({
+      persist: vi.fn().mockResolvedValue(true),
+      persisted: vi.fn().mockReturnValue(persisted.promise),
+    });
+    render(<HomeScreen ledger={ledger} month="2026-11" />);
+    await screen.findByText('No spending yet this month.');
+
+    expect(
+      screen.queryByRole('button', { name: 'Back up now' }),
+    ).not.toBeInTheDocument();
+
+    persisted.resolve(false);
+    await screen.findByRole('button', { name: 'Back up now' });
+  });
+
+  it('keeps the summary, month controls, and actions', async () => {
+    setStorage({
+      persist: vi.fn().mockResolvedValue(false),
+      persisted: vi.fn().mockResolvedValue(false),
+    });
+    render(<HomeScreen ledger={ledger} month="2026-11" />);
+    await screen.findByRole('button', { name: 'Back up now' });
+
+    expect(screen.getByText('Spent')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Previous month' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Accounts' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Backup' })).toBeInTheDocument();
   });
 });
