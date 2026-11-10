@@ -2,11 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Mock } from 'vitest';
-import {
-  formatMonth,
-  monthOf,
-  todayLocalDate,
-} from '../../domain/calendar';
+import { monthOf, todayLocalDate } from '../../domain/calendar';
 import {
   BACKUP_FORMAT,
   BACKUP_SCHEMA_VERSION,
@@ -179,7 +175,9 @@ describe('BackupScreen save', () => {
 
     await user.click(screen.getByRole('button', { name: 'Save backup' }));
 
-    expect(await screen.findByText('Backup saved.')).toBeInTheDocument();
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Backup saved.',
+    );
     expect(picker).toHaveBeenCalledTimes(1);
     const settings = await ledger.getSettings();
     expect(settings.lastBackupAt).toBeDefined();
@@ -202,7 +200,9 @@ describe('BackupScreen save', () => {
 
     await user.click(screen.getByRole('button', { name: 'Save backup' }));
 
-    expect(await screen.findByText('No file was saved.')).toBeInTheDocument();
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'No file was saved.',
+    );
     expect((await ledger.getSettings()).lastBackupAt).toBeUndefined();
   });
 
@@ -225,11 +225,9 @@ describe('BackupScreen save', () => {
 
     await user.click(screen.getByRole('button', { name: 'Save backup' }));
 
-    expect(
-      await screen.findByText(
-        'Your browser has taken the file. It is a backup only if you saved it.',
-      ),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Your browser has taken the file. It is a backup only if you saved it.',
+    );
     expect((await ledger.getSettings()).lastBackupAt).toBeUndefined();
   });
 
@@ -242,9 +240,9 @@ describe('BackupScreen save', () => {
 
     await user.click(screen.getByRole('button', { name: 'Save backup' }));
 
-    expect(
-      await screen.findByText("Couldn't make the backup. Try again."),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      "Couldn't make the backup. Try again.",
+    );
     expect((await ledger.getSettings()).lastBackupAt).toBeUndefined();
   });
 
@@ -277,6 +275,42 @@ describe('BackupScreen save', () => {
       }),
     });
     await screen.findByText('Backup saved.');
+  });
+
+  it('says the backup was saved but the time could not be recorded', async () => {
+    setStorage({ persisted: vi.fn().mockResolvedValue(true) });
+    const pending = Promise.withResolvers<{
+      createWritable: () => Promise<{
+        write: () => Promise<void>;
+        close: () => Promise<void>;
+      }>;
+    }>();
+    const picker = vi.fn().mockReturnValue(pending.promise);
+    Object.defineProperty(window, 'showSaveFilePicker', {
+      configurable: true,
+      value: picker,
+    });
+    const user = userEvent.setup();
+    render(<BackupScreen ledger={ledger} onRestored={vi.fn()} />);
+    await screen.findByText('No backup yet.');
+
+    await user.click(screen.getByRole('button', { name: 'Save backup' }));
+    await waitFor(() => {
+      expect(picker).toHaveBeenCalledTimes(1);
+    });
+    db.close({ disableAutoOpen: true });
+    pending.resolve({
+      createWritable: vi.fn().mockResolvedValue({
+        write: vi.fn().mockResolvedValue(undefined),
+        close: vi.fn().mockResolvedValue(undefined),
+      }),
+    });
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      "The backup was saved, but the app couldn't record when.",
+    );
+    expect(screen.getByRole('status')).toHaveTextContent('Backup saved.');
+    await db.open();
   });
 });
 
@@ -477,7 +511,6 @@ describe('BackupScreen restore confirm', () => {
         `#/?m=${monthOf(todayLocalDate())}`,
       );
     });
-    expect(formatMonth(monthOf(todayLocalDate()))).not.toBe('');
   });
 
   it('keeps the preview and the previous ledger when the write fails', async () => {

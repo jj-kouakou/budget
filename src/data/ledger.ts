@@ -8,6 +8,7 @@ import type {
   Settings,
 } from '../domain/types';
 import { isValidLocalDate, isValidMonthKey } from '../domain/calendar';
+import { byCodeUnitId } from '../domain/backup';
 import type { BackupData } from '../domain/backup';
 import type { BudgetDatabase } from './db';
 import { STARTER_CATEGORIES } from './seed';
@@ -99,13 +100,6 @@ export interface Ledger {
 }
 
 const MAX_ACCOUNT_NAME_LENGTH = 60;
-
-function byCodeUnitId(
-  left: { id: string },
-  right: { id: string },
-): number {
-  return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
-}
 
 function requireAccountName(name: string): string {
   const trimmed = name.trim();

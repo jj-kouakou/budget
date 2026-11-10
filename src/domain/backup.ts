@@ -64,7 +64,7 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0;
 }
 
-function byCodeUnitId(
+export function byCodeUnitId(
   left: { id: string },
   right: { id: string },
 ): number {
