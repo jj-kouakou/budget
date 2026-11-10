@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import type { Ledger } from '../data/ledger';
 import { navigate, useHashRoute } from './router';
@@ -12,22 +12,36 @@ import { HomeScreen } from './screens/HomeScreen';
 export function App({ ledger }: { ledger: Ledger }) {
   const route = useHashRoute();
   const accounts = useLiveQuery(() => ledger.listAccounts(), [ledger]);
+  const [pendingRestore, setPendingRestore] = useState(false);
+
+  useEffect(() => {
+    if (accounts !== undefined && accounts.length > 0) {
+      setPendingRestore(false);
+    }
+  }, [accounts]);
 
   useEffect(() => {
     if (
       accounts !== undefined &&
       accounts.length === 0 &&
-      route.name !== 'accounts'
+      route.name !== 'accounts' &&
+      route.name !== 'backup' &&
+      !pendingRestore
     ) {
       navigate({ name: 'accounts' }, { replace: true });
     }
-  }, [accounts, route.name]);
+  }, [accounts, route.name, pendingRestore]);
 
   if (accounts === undefined) {
     return <p>Loading…</p>;
   }
 
-  if (accounts.length === 0 && route.name !== 'accounts') {
+  if (
+    accounts.length === 0 &&
+    route.name !== 'accounts' &&
+    route.name !== 'backup' &&
+    !pendingRestore
+  ) {
     return <p>Loading…</p>;
   }
 
@@ -39,7 +53,16 @@ export function App({ ledger }: { ledger: Ledger }) {
     case 'accounts':
       return <AccountsScreen ledger={ledger} />;
     case 'backup':
-      return <BackupScreen ledger={ledger} />;
+      return (
+        <BackupScreen
+          ledger={ledger}
+          onRestored={(accountCount) => {
+            if (accountCount > 0) {
+              setPendingRestore(true);
+            }
+          }}
+        />
+      );
     case 'category':
       return (
         <CategoryEntriesScreen

@@ -2,6 +2,18 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Mock } from 'vitest';
+import {
+  formatMonth,
+  monthOf,
+  todayLocalDate,
+} from '../../domain/calendar';
+import {
+  BACKUP_FORMAT,
+  BACKUP_SCHEMA_VERSION,
+  createBackupFile,
+  serializeBackup,
+} from '../../domain/backup';
+import type { BackupData } from '../../domain/backup';
 import { BudgetDatabase } from '../../data/db';
 import { createLedger } from '../../data/ledger';
 import type { Ledger } from '../../data/ledger';
@@ -75,7 +87,7 @@ describe('BackupScreen last backup', () => {
   it('says no backup yet before any backup', async () => {
     setStorage({ persisted: vi.fn().mockResolvedValue(true) });
 
-    render(<BackupScreen ledger={ledger} />);
+    render(<BackupScreen ledger={ledger} onRestored={vi.fn()} />);
 
     expect(await screen.findByText('No backup yet.')).toBeInTheDocument();
   });
@@ -84,7 +96,7 @@ describe('BackupScreen last backup', () => {
     setStorage({ persisted: vi.fn().mockResolvedValue(true) });
     await ledger.markBackupSaved('2026-11-09T08:00:00.000Z');
 
-    render(<BackupScreen ledger={ledger} />);
+    render(<BackupScreen ledger={ledger} onRestored={vi.fn()} />);
 
     const time = await screen.findByText(/Last backup/, { selector: 'p' });
     expect(time.querySelector('time')).toHaveAttribute(
@@ -102,7 +114,7 @@ describe('BackupScreen storage status', () => {
       persisted: vi.fn().mockResolvedValue(true),
     });
 
-    render(<BackupScreen ledger={ledger} />);
+    render(<BackupScreen ledger={ledger} onRestored={vi.fn()} />);
 
     expect(
       await screen.findByText(
@@ -117,7 +129,7 @@ describe('BackupScreen storage status', () => {
       persisted: vi.fn().mockResolvedValue(false),
     });
 
-    render(<BackupScreen ledger={ledger} />);
+    render(<BackupScreen ledger={ledger} onRestored={vi.fn()} />);
 
     expect(
       await screen.findByText(
@@ -129,7 +141,7 @@ describe('BackupScreen storage status', () => {
   it('explains an unknown storage status', async () => {
     setStorage(undefined);
 
-    render(<BackupScreen ledger={ledger} />);
+    render(<BackupScreen ledger={ledger} onRestored={vi.fn()} />);
 
     expect(
       await screen.findByText(
@@ -145,7 +157,7 @@ describe('BackupScreen storage status', () => {
       persisted: vi.fn().mockReturnValue(persisted.promise),
     });
 
-    render(<BackupScreen ledger={ledger} />);
+    render(<BackupScreen ledger={ledger} onRestored={vi.fn()} />);
     await screen.findByText('No backup yet.');
 
     expect(
@@ -162,7 +174,7 @@ describe('BackupScreen save', () => {
     setStorage({ persisted: vi.fn().mockResolvedValue(true) });
     const picker = stubPicker('resolve');
     const user = userEvent.setup();
-    render(<BackupScreen ledger={ledger} />);
+    render(<BackupScreen ledger={ledger} onRestored={vi.fn()} />);
     await screen.findByText('No backup yet.');
 
     await user.click(screen.getByRole('button', { name: 'Save backup' }));
@@ -185,7 +197,7 @@ describe('BackupScreen save', () => {
     setStorage({ persisted: vi.fn().mockResolvedValue(true) });
     stubPicker('reject', namedError('AbortError'));
     const user = userEvent.setup();
-    render(<BackupScreen ledger={ledger} />);
+    render(<BackupScreen ledger={ledger} onRestored={vi.fn()} />);
     await screen.findByText('No backup yet.');
 
     await user.click(screen.getByRole('button', { name: 'Save backup' }));
@@ -208,7 +220,7 @@ describe('BackupScreen save', () => {
       () => undefined,
     );
     const user = userEvent.setup();
-    render(<BackupScreen ledger={ledger} />);
+    render(<BackupScreen ledger={ledger} onRestored={vi.fn()} />);
     await screen.findByText('No backup yet.');
 
     await user.click(screen.getByRole('button', { name: 'Save backup' }));
@@ -225,7 +237,7 @@ describe('BackupScreen save', () => {
     setStorage({ persisted: vi.fn().mockResolvedValue(true) });
     stubPicker('reject', namedError('QuotaExceededError'));
     const user = userEvent.setup();
-    render(<BackupScreen ledger={ledger} />);
+    render(<BackupScreen ledger={ledger} onRestored={vi.fn()} />);
     await screen.findByText('No backup yet.');
 
     await user.click(screen.getByRole('button', { name: 'Save backup' }));
@@ -249,7 +261,7 @@ describe('BackupScreen save', () => {
       value: vi.fn().mockReturnValue(pending.promise),
     });
     const user = userEvent.setup();
-    render(<BackupScreen ledger={ledger} />);
+    render(<BackupScreen ledger={ledger} onRestored={vi.fn()} />);
     await screen.findByText('No backup yet.');
 
     await user.click(screen.getByRole('button', { name: 'Save backup' }));
@@ -265,5 +277,238 @@ describe('BackupScreen save', () => {
       }),
     });
     await screen.findByText('Backup saved.');
+  });
+});
+
+
+function backupData(overrides: Partial<BackupData> = {}): BackupData {
+  return {
+    accounts: [
+      {
+        id: 'acct-restored',
+        name: 'Restored savings',
+        type: 'savings',
+        createdAt: '2026-11-01T12:00:00.000Z',
+      },
+    ],
+    categories: [{ id: 'cat_food', name: 'Food', archived: false }],
+    entries: [
+      {
+        id: 'entry-restored-1',
+        kind: 'expense',
+        date: '2026-11-05',
+        amountMinor: 1250,
+        accountId: 'acct-restored',
+        categoryId: 'cat_food',
+      },
+      {
+        id: 'entry-restored-2',
+        kind: 'opening',
+        date: '2026-11-01',
+        amountMinor: 5000,
+        accountId: 'acct-restored',
+      },
+    ],
+    settings: { currency: 'CAD', currencyExponent: 2 },
+    ...overrides,
+  };
+}
+
+function backupText(data: BackupData = backupData()): string {
+  return serializeBackup(
+    createBackupFile(data, new Date('2026-11-09T08:00:00.000Z')),
+  );
+}
+
+function fileWith(text: string, name = 'budget-backup.json'): File {
+  return new File([text], name, { type: 'application/json' });
+}
+
+async function uploadBackup(text: string): Promise<void> {
+  const user = userEvent.setup();
+  await user.upload(screen.getByLabelText('Restore from backup'), fileWith(text));
+}
+
+describe('BackupScreen restore preview', () => {
+  it('shows the file date, counts, and replacement warning', async () => {
+    render(<BackupScreen ledger={ledger} onRestored={vi.fn()} />);
+    await screen.findByText('No backup yet.');
+
+    await uploadBackup(backupText());
+
+    expect(
+      await screen.findByRole('heading', { name: 'Restore this backup?' }),
+    ).toBeInTheDocument();
+    const summary = screen.getByText(/This backup was made on/);
+    expect(summary).toHaveTextContent(
+      'It contains 1 account and 2 entries.',
+    );
+    expect(summary.querySelector('time')).toHaveAttribute(
+      'datetime',
+      '2026-11-09T08:00:00.000Z',
+    );
+    expect(
+      screen.getByText('Restoring replaces everything currently in the app.'),
+    ).toBeInTheDocument();
+  });
+
+  it('uses singular counts for one account and one entry', async () => {
+    render(<BackupScreen ledger={ledger} onRestored={vi.fn()} />);
+    await screen.findByText('No backup yet.');
+
+    await uploadBackup(
+      backupText(backupData({ entries: backupData().entries.slice(0, 1) })),
+    );
+
+    expect(
+      await screen.findByText(/It contains 1 account and 1 entry\./),
+    ).toBeInTheDocument();
+  });
+
+  it('cancels without writing and allows choosing the same file again', async () => {
+    const user = userEvent.setup();
+    const before = {
+      accounts: await db.accounts.toArray(),
+      categories: await db.categories.toArray(),
+      entries: await db.entries.toArray(),
+      settings: await db.settings.toArray(),
+    };
+    render(<BackupScreen ledger={ledger} onRestored={vi.fn()} />);
+    await screen.findByText('No backup yet.');
+    const input = screen.getByLabelText('Restore from backup');
+
+    await user.upload(input, fileWith(backupText()));
+    await screen.findByRole('heading', { name: 'Restore this backup?' });
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(
+      screen.queryByRole('heading', { name: 'Restore this backup?' }),
+    ).not.toBeInTheDocument();
+    expect({
+      accounts: await db.accounts.toArray(),
+      categories: await db.categories.toArray(),
+      entries: await db.entries.toArray(),
+      settings: await db.settings.toArray(),
+    }).toEqual(before);
+
+    await user.upload(input, fileWith(backupText()));
+    expect(
+      await screen.findByRole('heading', { name: 'Restore this backup?' }),
+    ).toBeInTheDocument();
+  });
+});
+
+describe('BackupScreen restore errors', () => {
+  it.each([
+    ['not a backup', 'not json', "That file isn't a Budget backup."],
+    [
+      'damaged',
+      JSON.stringify({
+        format: BACKUP_FORMAT,
+        schemaVersion: BACKUP_SCHEMA_VERSION,
+        exportedAt: '2026-11-09T08:00:00.000Z',
+        data: {
+          accounts: [{ id: '', name: '', type: 'checking', createdAt: '' }],
+          categories: [],
+          entries: [],
+          settings: { currency: 'CAD', currencyExponent: 2 },
+        },
+      }),
+      "That backup is damaged and can't be restored.",
+    ],
+    [
+      'newer version',
+      JSON.stringify({
+        format: BACKUP_FORMAT,
+        schemaVersion: BACKUP_SCHEMA_VERSION + 1,
+        exportedAt: '2026-11-09T08:00:00.000Z',
+        data: backupData(),
+      }),
+      'That backup was made by a newer version of Budget. Update the app and try again.',
+    ],
+  ])('maps a %s file to its message and writes nothing', async (_name, text, copy) => {
+    const before = {
+      accounts: await db.accounts.toArray(),
+      entries: await db.entries.toArray(),
+    };
+    render(<BackupScreen ledger={ledger} onRestored={vi.fn()} />);
+    await screen.findByText('No backup yet.');
+
+    await uploadBackup(text);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(copy);
+    expect({
+      accounts: await db.accounts.toArray(),
+      entries: await db.entries.toArray(),
+    }).toEqual(before);
+    expect(
+      screen.queryByRole('heading', { name: 'Restore this backup?' }),
+    ).not.toBeInTheDocument();
+    expect(
+      (screen.getByLabelText('Restore from backup') as HTMLInputElement)
+        .files?.length,
+    ).toBe(0);
+  });
+});
+
+describe('BackupScreen restore confirm', () => {
+  it('replaces the ledger, reports the count, and lands on home', async () => {
+    const onRestored = vi.fn();
+    const user = userEvent.setup();
+    render(<BackupScreen ledger={ledger} onRestored={onRestored} />);
+    await screen.findByText('No backup yet.');
+    await uploadBackup(backupText());
+    await screen.findByRole('heading', { name: 'Restore this backup?' });
+
+    await user.click(screen.getByRole('button', { name: 'Restore backup' }));
+
+    await waitFor(async () => {
+      expect((await db.accounts.toArray()).map((account) => account.id)).toEqual(
+        ['acct-restored'],
+      );
+    });
+    expect(onRestored).toHaveBeenCalledWith(1);
+    expect((await db.entries.toArray()).map((entry) => entry.id)).toEqual([
+      'entry-restored-1',
+      'entry-restored-2',
+    ]);
+    await waitFor(() => {
+      expect(window.location.hash).toBe(
+        `#/?m=${monthOf(todayLocalDate())}`,
+      );
+    });
+    expect(formatMonth(monthOf(todayLocalDate()))).not.toBe('');
+  });
+
+  it('keeps the preview and the previous ledger when the write fails', async () => {
+    const data = backupData({
+      entries: [backupData().entries[0]!, backupData().entries[0]!],
+    });
+    const before = {
+      accounts: await db.accounts.toArray(),
+      entries: await db.entries.toArray(),
+    };
+    const user = userEvent.setup();
+    render(<BackupScreen ledger={ledger} onRestored={vi.fn()} />);
+    await screen.findByText('No backup yet.');
+    await uploadBackup(backupText(data));
+    await screen.findByRole('heading', { name: 'Restore this backup?' });
+
+    await user.click(screen.getByRole('button', { name: 'Restore backup' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      "Couldn't restore the backup. Your ledger is unchanged.",
+    );
+    expect(
+      screen.getByRole('heading', { name: 'Restore this backup?' }),
+    ).toBeInTheDocument();
+    expect({
+      accounts: await db.accounts.toArray(),
+      entries: await db.entries.toArray(),
+    }).toEqual(before);
+    expect(
+      (screen.getByLabelText('Restore from backup') as HTMLInputElement)
+        .files?.length,
+    ).toBe(0);
   });
 });

@@ -184,6 +184,12 @@ select {
   margin: 0 0 0.5rem;
 }
 
+.backup-preview {
+  border: 1px solid #cbd5e1;
+  border-radius: 0.75rem;
+  padding: 1rem;
+}
+
 .empty-state {
   border: 1px dashed #94a3b8;
   border-radius: 0.75rem;

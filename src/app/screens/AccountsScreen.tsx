@@ -245,6 +245,12 @@ export function AccountsScreen({ ledger }: { ledger: Ledger }) {
           </button>
         </div>
       ) : null}
+
+      <div className="actions">
+        <button type="button" onClick={() => navigate({ name: 'backup' })}>
+          Restore from backup
+        </button>
+      </div>
     </section>
   );
 }
