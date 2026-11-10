@@ -12,7 +12,7 @@ The app replaces the spreadsheet that gets abandoned in week three.
 |---|---|---|---|
 | 1 | Log spending and see this month by category | Set up the accounts they spend from; add an expense in under ten seconds; see this month's total and category breakdown; move between months; install the app on the phone and use it without a connection. | Done — deployed at https://jj-kouakou.github.io/budget/ |
 | 2 | Inspect and correct entries | Tap a category to see the entries behind it; fix or remove a mistaken entry. | Done — deployed at https://jj-kouakou.github.io/budget/ |
-| 3 | Keep a backup | Export the ledger to a file and restore it; see when the last backup was made and whether the phone might discard the data. | Backlog |
+| 3 | Keep a backup | Export the ledger to a file and restore it; see when the last backup was made and whether the phone might discard the data. | In progress |
 | 4 | Manage categories | Add, rename, and archive categories so the breakdown matches how they think about their money. | Backlog |
 | 5 | Compare with last month | See last month's category totals beside this month's. | Backlog |
 | 6 | Track account balances | Enter opening balances and see what each account holds or owes. | Backlog |
@@ -29,6 +29,12 @@ The app replaces the spreadsheet that gets abandoned in week three.
   loss, not accuracy: backup protects a history that now survives correction.
   Close-out on 2026-11-04 re-checked the order and found nothing in slice 2
   that changes it.
+- **Slice 3 was re-checked on 2026-11-10 and stays next.** The destination's
+  "keep the ledger safe" promise is still unmet, and the app has been
+  collecting real history since it was deployed. The last-month comparison
+  still has no full prior month to compare, and category management has a
+  usable starter list plus correction; loss is the irreversible risk. No
+  priority shift.
 - **Category management lands before the last-month comparison.** The starter
   list is enough to begin, but the user should be able to shape the categories
   before the first full month is compared against the second.

@@ -62,3 +62,24 @@ _Avoid_: Starting amount, initial balance
 The sum of expenses in a period. Excludes income, transfers, and opening
 balances.
 _Avoid_: Outflow, total spent, burn
+
+**Backup**:
+The whole ledger — every account, category, entry, and the currency setting —
+saved as one file outside the app. The only protection against losing the
+ledger.
+_Avoid_: Export, dump, snapshot
+
+**Restore**:
+Replacing the entire ledger with the contents of a backup file. All-or-nothing;
+never merges.
+_Avoid_: Import, load, sync
+
+**Last backup**:
+The instant a backup file was last saved from this device. Restoring a backup
+is not making one.
+_Avoid_: Last export, backup date
+
+**Persisted storage**:
+Whether the browser has agreed to keep the ledger rather than being free to
+discard it.
+_Avoid_: Permanent storage, saved data
