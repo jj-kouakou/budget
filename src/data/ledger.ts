@@ -8,6 +8,7 @@ import type {
   Settings,
 } from '../domain/types';
 import { isValidLocalDate, isValidMonthKey } from '../domain/calendar';
+import type { BackupData } from '../domain/backup';
 import type { BudgetDatabase } from './db';
 import { STARTER_CATEGORIES } from './seed';
 
@@ -92,9 +93,19 @@ export interface Ledger {
   ): Promise<CategoryEntries>;
   monthSummary(month: MonthKey): Promise<MonthSummary>;
   getSettings(): Promise<Settings>;
+  readBackupData(): Promise<BackupData>;
+  restoreBackup(data: BackupData): Promise<void>;
+  markBackupSaved(at: string): Promise<void>;
 }
 
 const MAX_ACCOUNT_NAME_LENGTH = 60;
+
+function byCodeUnitId(
+  left: { id: string },
+  right: { id: string },
+): number {
+  return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
+}
 
 function requireAccountName(name: string): string {
   const trimmed = name.trim();
@@ -146,12 +157,11 @@ export function createLedger(db: BudgetDatabase): Ledger {
             currency: 'CAD',
             currencyExponent: 2,
           });
-        }
 
-        for (const category of STARTER_CATEGORIES) {
-          const existing = await db.categories.get(category.id);
-          if (!existing) {
-            await db.categories.add(category);
+          for (const category of STARTER_CATEGORIES) {
+            if (!(await db.categories.get(category.id))) {
+              await db.categories.add(category);
+            }
           }
         }
       });
@@ -440,6 +450,78 @@ export function createLedger(db: BudgetDatabase): Ledger {
         throw new Error('Ledger not initialized');
       }
       return settings;
+    },
+
+    async readBackupData() {
+      return db.transaction(
+        'r',
+        db.accounts,
+        db.categories,
+        db.entries,
+        db.settings,
+        async () => {
+          const settings = await db.settings.get('app');
+          if (!settings) {
+            throw new Error('Ledger not initialized');
+          }
+          const accounts = await db.accounts.toArray();
+          const categories = await db.categories.toArray();
+          const entries = await db.entries.toArray();
+          return {
+            accounts: accounts.sort(byCodeUnitId),
+            categories: categories.sort(byCodeUnitId),
+            entries: entries.sort(byCodeUnitId),
+            settings: {
+              currency: settings.currency,
+              currencyExponent: settings.currencyExponent,
+            },
+          };
+        },
+      );
+    },
+
+    async restoreBackup(data) {
+      await db.transaction(
+        'rw',
+        db.accounts,
+        db.categories,
+        db.entries,
+        db.settings,
+        async () => {
+          const current = await db.settings.get('app');
+          const lastBackupAt = current?.lastBackupAt;
+
+          await db.accounts.clear();
+          await db.categories.clear();
+          await db.entries.clear();
+          await db.settings.clear();
+
+          await db.accounts.bulkAdd(data.accounts);
+          await db.categories.bulkAdd(data.categories);
+          await db.entries.bulkAdd(data.entries);
+
+          const settings: Settings = {
+            id: 'app',
+            currency: data.settings.currency,
+            currencyExponent: data.settings.currencyExponent,
+          };
+          if (lastBackupAt !== undefined) {
+            settings.lastBackupAt = lastBackupAt;
+          }
+          await db.settings.add(settings);
+        },
+      );
+    },
+
+    async markBackupSaved(at) {
+      await db.transaction('rw', db.settings, async () => {
+        const updated = await db.settings.update('app', {
+          lastBackupAt: at,
+        });
+        if (updated === 0) {
+          throw new Error('Ledger not initialized');
+        }
+      });
     },
   };
 }

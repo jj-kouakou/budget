@@ -31,4 +31,5 @@ export interface Settings {
   currency: string; // ISO 4217 code
   currencyExponent: number; // minor-unit exponent; 2 for CAD
   lastAccountId?: string;
+  lastBackupAt?: string; // ISO instant; device state, never in a backup
 }

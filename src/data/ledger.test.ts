@@ -1324,3 +1324,285 @@ describe('deleteExpense', () => {
     expect(await db.entries.get('entry-opening')).toEqual(opening);
   });
 });
+
+describe('backup operations', () => {
+  function backupData() {
+    return {
+      accounts: [
+        {
+          id: 'acct-z',
+          name: 'Visa',
+          type: 'credit' as const,
+          createdAt: '2026-11-02T14:03:00.000Z',
+        },
+      ],
+      categories: [
+        { id: 'cat_food', name: 'Food', archived: false },
+        { id: 'cat_fun', name: 'Fun', archived: true },
+      ],
+      entries: [
+        {
+          id: 'entry-2',
+          kind: 'opening' as const,
+          date: '2026-11-02',
+          amountMinor: -24000,
+          accountId: 'acct-z',
+        },
+        {
+          id: 'entry-1',
+          kind: 'expense' as const,
+          date: '2026-11-03',
+          amountMinor: 1842,
+          accountId: 'acct-z',
+          categoryId: 'cat_food',
+        },
+      ],
+      settings: { currency: 'EUR', currencyExponent: 2 },
+    };
+  }
+
+  async function snapshot(db: BudgetDatabase) {
+    return {
+      accounts: await db.accounts.toArray(),
+      categories: await db.categories.toArray(),
+      entries: await db.entries.toArray(),
+      settings: await db.settings.toArray(),
+    };
+  }
+
+  it('readBackupData returns every row sorted by id and only the currency pair', async () => {
+    const db = openDatabase();
+    const ledger = createLedger(db);
+    await ledger.initialize();
+    await db.accounts.bulkAdd([
+      makeAccount({ id: 'acct-b', name: 'Savings' }),
+      makeAccount({ id: 'acct-a', name: 'Checking' }),
+    ]);
+    await db.entries.bulkAdd([
+      {
+        id: 'entry-b',
+        kind: 'expense',
+        date: '2026-11-02',
+        amountMinor: 500,
+        accountId: 'acct-a',
+        categoryId: 'cat_groceries',
+      },
+      {
+        id: 'entry-a',
+        kind: 'income',
+        date: '2026-11-03',
+        amountMinor: 900,
+        accountId: 'acct-a',
+        categoryId: 'cat_other',
+      },
+    ]);
+    await db.settings.update('app', {
+      lastAccountId: 'acct-a',
+      lastBackupAt: '2026-11-09T08:00:00.000Z',
+    });
+
+    const data = await ledger.readBackupData();
+
+    expect(data.accounts.map((account) => account.id)).toEqual([
+      'acct-a',
+      'acct-b',
+    ]);
+    expect(data.categories.map((category) => category.id)).toEqual([
+      'cat_bills',
+      'cat_eating_out',
+      'cat_fun',
+      'cat_groceries',
+      'cat_health',
+      'cat_housing',
+      'cat_other',
+      'cat_shopping',
+      'cat_transport',
+    ]);
+    expect(data.entries.map((entry) => entry.id)).toEqual([
+      'entry-a',
+      'entry-b',
+    ]);
+    expect(data.settings).toEqual({ currency: 'CAD', currencyExponent: 2 });
+    expect('lastAccountId' in data.settings).toBe(false);
+    expect('lastBackupAt' in data.settings).toBe(false);
+  });
+
+  it('readBackupData throws before initialize', async () => {
+    const db = openDatabase();
+    const ledger = createLedger(db);
+
+    const error = await ledger
+      .readBackupData()
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(Error);
+    expect(error).not.toBeInstanceOf(LedgerError);
+    expect(error).toMatchObject({ message: 'Ledger not initialized' });
+  });
+
+  it('restoreBackup replaces all four tables, preserves lastBackupAt, and drops lastAccountId', async () => {
+    const db = openDatabase();
+    const ledger = createLedger(db);
+    await ledger.initialize();
+    const old = await ledger.addAccount({ name: 'Checking', type: 'checking' });
+    await ledger.addExpense({
+      amountMinor: 700,
+      categoryId: 'cat_groceries',
+      accountId: old.id,
+      date: '2026-11-02',
+    });
+    await db.settings.update('app', {
+      lastAccountId: old.id,
+      lastBackupAt: '2026-11-09T08:00:00.000Z',
+    });
+
+    await ledger.restoreBackup(backupData());
+
+    expect((await db.accounts.toArray()).map((account) => account.name)).toEqual([
+      'Visa',
+    ]);
+    expect(await db.categories.count()).toBe(2);
+    expect(
+      (await db.entries.toArray()).map((entry) => [entry.id, entry.amountMinor]),
+    ).toEqual([
+      ['entry-1', 1842],
+      ['entry-2', -24000],
+    ]);
+    expect(await db.settings.get('app')).toEqual({
+      id: 'app',
+      currency: 'EUR',
+      currencyExponent: 2,
+      lastBackupAt: '2026-11-09T08:00:00.000Z',
+    });
+  });
+
+  it('restoreBackup omits lastBackupAt when the previous ledger had none', async () => {
+    const db = openDatabase();
+    const ledger = createLedger(db);
+    await ledger.initialize();
+
+    await ledger.restoreBackup(backupData());
+
+    expect(await db.settings.get('app')).toEqual({
+      id: 'app',
+      currency: 'EUR',
+      currencyExponent: 2,
+    });
+  });
+
+  it('restoreBackup accepts entries whose account or category is missing', async () => {
+    const db = openDatabase();
+    const ledger = createLedger(db);
+    await ledger.initialize();
+
+    await ledger.restoreBackup({
+      accounts: [],
+      categories: [],
+      entries: [
+        {
+          id: 'orphan',
+          kind: 'expense',
+          date: '2026-11-03',
+          amountMinor: 300,
+          accountId: 'missing-account',
+          categoryId: 'missing-category',
+        },
+      ],
+      settings: { currency: 'CAD', currencyExponent: 2 },
+    });
+
+    expect(await ledger.readBackupData()).toEqual({
+      accounts: [],
+      categories: [],
+      entries: [
+        {
+          id: 'orphan',
+          kind: 'expense',
+          date: '2026-11-03',
+          amountMinor: 300,
+          accountId: 'missing-account',
+          categoryId: 'missing-category',
+        },
+      ],
+      settings: { currency: 'CAD', currencyExponent: 2 },
+    });
+  });
+
+  it('fails on duplicate entry ids and leaves the previous ledger byte-for-byte intact', async () => {
+    const db = openDatabase();
+    const ledger = createLedger(db);
+    await ledger.initialize();
+    const checking = await ledger.addAccount({
+      name: 'Checking',
+      type: 'checking',
+    });
+    await ledger.addExpense({
+      amountMinor: 700,
+      categoryId: 'cat_groceries',
+      accountId: checking.id,
+      date: '2026-11-02',
+    });
+    const before = await snapshot(db);
+    const data = backupData();
+    data.entries.push({ ...data.entries[0]! });
+
+    const error = await ledger
+      .restoreBackup(data)
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(Error);
+    expect(await snapshot(db)).toEqual(before);
+  });
+
+  it('markBackupSaved writes only lastBackupAt', async () => {
+    const db = openDatabase();
+    const ledger = createLedger(db);
+    await ledger.initialize();
+    await db.settings.update('app', { lastAccountId: 'acct-1' });
+
+    await ledger.markBackupSaved('2026-11-10T19:42:11.000Z');
+
+    expect(await db.settings.get('app')).toEqual({
+      id: 'app',
+      currency: 'CAD',
+      currencyExponent: 2,
+      lastAccountId: 'acct-1',
+      lastBackupAt: '2026-11-10T19:42:11.000Z',
+    });
+  });
+
+  it('markBackupSaved throws before initialize', async () => {
+    const db = openDatabase();
+    const ledger = createLedger(db);
+
+    const error = await ledger
+      .markBackupSaved('2026-11-10T19:42:11.000Z')
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(Error);
+    expect(error).not.toBeInstanceOf(LedgerError);
+    expect(error).toMatchObject({ message: 'Ledger not initialized' });
+  });
+
+  it('does not re-seed starter categories after a reduced restore', async () => {
+    const db = openDatabase();
+    const ledger = createLedger(db);
+    await ledger.initialize();
+    await db.settings.update('app', {
+      lastBackupAt: '2026-11-09T08:00:00.000Z',
+    });
+
+    await ledger.restoreBackup(backupData());
+    await ledger.initialize();
+
+    expect(
+      (await db.categories.toArray()).map((category) => category.id).sort(),
+    ).toEqual(['cat_food', 'cat_fun']);
+    expect(await db.settings.get('app')).toEqual({
+      id: 'app',
+      currency: 'EUR',
+      currencyExponent: 2,
+      lastBackupAt: '2026-11-09T08:00:00.000Z',
+    });
+  });
+});
