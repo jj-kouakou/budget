@@ -6,7 +6,8 @@ import { createLedger } from './data/ledger';
 import type { Ledger } from './data/ledger';
 import { App } from './app/App';
 import { BootError } from './app/BootError';
-import { registerPwa, requestPersistentStorage } from './app/pwa';
+import { registerPwa } from './app/pwa';
+import { requestPersistentStorage } from './app/storage';
 
 export async function boot(
   ledger: Ledger,
