@@ -81,6 +81,17 @@ describe('App', () => {
     ).toBeInTheDocument();
   });
 
+  it('renders the backup screen from #/backup', async () => {
+    await ledger.addAccount({ name: 'Checking', type: 'checking' });
+    window.location.hash = '#/backup';
+
+    render(<App ledger={ledger} />);
+
+    expect(
+      await screen.findByRole('heading', { name: 'Backup' }),
+    ).toBeInTheDocument();
+  });
+
   it('renders accounts from #/accounts', async () => {
     await ledger.addAccount({ name: 'Checking', type: 'checking' });
     window.location.hash = '#/accounts';

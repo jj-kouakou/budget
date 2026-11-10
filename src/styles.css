@@ -175,6 +175,15 @@ select {
   margin: 0 0 1rem;
 }
 
+.backup-section {
+  margin-top: 1.5rem;
+}
+
+.backup-section h2 {
+  font-size: 1.1rem;
+  margin: 0 0 0.5rem;
+}
+
 .empty-state {
   border: 1px dashed #94a3b8;
   border-radius: 0.75rem;

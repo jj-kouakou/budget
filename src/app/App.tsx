@@ -4,6 +4,7 @@ import type { Ledger } from '../data/ledger';
 import { navigate, useHashRoute } from './router';
 import { AccountsScreen } from './screens/AccountsScreen';
 import { AddExpenseScreen } from './screens/AddExpenseScreen';
+import { BackupScreen } from './screens/BackupScreen';
 import { CategoryEntriesScreen } from './screens/CategoryEntriesScreen';
 import { EntryEditorScreen } from './screens/EntryEditorScreen';
 import { HomeScreen } from './screens/HomeScreen';
@@ -37,6 +38,8 @@ export function App({ ledger }: { ledger: Ledger }) {
       return <AddExpenseScreen ledger={ledger} />;
     case 'accounts':
       return <AccountsScreen ledger={ledger} />;
+    case 'backup':
+      return <BackupScreen ledger={ledger} />;
     case 'category':
       return (
         <CategoryEntriesScreen

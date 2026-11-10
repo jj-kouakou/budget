@@ -218,3 +218,15 @@ describe('HomeScreen', () => {
     );
   });
 });
+
+describe('HomeScreen backup action', () => {
+  it('navigates to the backup screen', async () => {
+    const user = userEvent.setup();
+    render(<HomeScreen ledger={ledger} month="2026-11" />);
+    await screen.findByRole('button', { name: 'Backup' });
+
+    await user.click(screen.getByRole('button', { name: 'Backup' }));
+
+    expect(window.location.hash).toBe('#/backup');
+  });
+});

@@ -120,6 +120,9 @@ export function HomeScreen({
         <button type="button" onClick={() => navigate({ name: 'accounts' })}>
           Accounts
         </button>
+        <button type="button" onClick={() => navigate({ name: 'backup' })}>
+          Backup
+        </button>
       </div>
     </section>
   );
