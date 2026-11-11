@@ -6,7 +6,8 @@
   `docs/architecture/slices/slice-03-architecture.md`, ADRs 0001/0005,
   `CONTEXT.md`, and the slice-1/2 implementation in `src/`
 - **Implementation state:** slices 1 and 2 are built and deployed. Slice 3 is
-  not built; this spec is its implementation contract.
+  built on branch `slice-03` and closed out on 2026-11-10; this spec is its
+  implementation contract.
 - **Endpoints:** none. The app is static files plus IndexedDB (ADR 0001);
   `Ledger` is the whole application API.
 
@@ -14,7 +15,7 @@
 > session because no slice-3 spec existed. It is derived strictly from the
 > slice-3 architecture and scope; it adds no architectural decision. The one
 > durable contract flagged by the architecture (the backup file shape) is
-> restated in §6 and is still **unconfirmed**.
+> restated in §6 and was **confirmed by the build** as v1.
 
 ---
 
@@ -215,6 +216,11 @@ export class BackupError extends Error {
   );
 }
 
+export function byCodeUnitId(
+  left: { id: string },
+  right: { id: string },
+): number; // shared with data/ledger so snapshot and file ordering cannot diverge
+
 export function createBackupFile(data: BackupData, exportedAt: Date): BackupFile;
 export function serializeBackup(file: BackupFile): string;
 export function parseBackupFile(text: string): BackupFile;
@@ -299,15 +305,15 @@ throws:
 | 1 | `JSON.parse` throws | `not-a-backup` |
 | 2 | Not a plain object, or `Array.isArray` | `not-a-backup` |
 | 3 | `format !== BACKUP_FORMAT` | `not-a-backup` |
-| 4 | `schemaVersion` not a positive integer | `damaged` |
+| 4 | `schemaVersion` not a positive safe integer | `damaged` |
 | 5 | `schemaVersion > BACKUP_SCHEMA_VERSION` | `newer-version` |
 | 6 | `exportedAt` not a string, or `Date.parse` is `NaN` | `damaged` |
 | 7 | `data` not a plain object, or `accounts` / `categories` / `entries` not arrays, or `settings` not an object | `damaged` |
 | 8 | A migration is missing for a lower version | `damaged` |
 | 9 | Any row or settings field fails §6.6 | `damaged` |
 
-A `schemaVersion` below `1` is not a positive integer, so step 4 makes it
-`damaged`; the migration registry is empty today.
+A `schemaVersion` below `1` is not a positive safe integer, so step 4 makes
+it `damaged`; the migration registry is empty today.
 
 ### 6.6 Validation and normalization
 
@@ -528,8 +534,10 @@ live accounts query catches up:
 - `App` keeps `pendingRestore` set when `accountCount > 0`, skips the
   zero-account redirect while it is set, and clears it once the live accounts
   query is non-empty.
-- While `pendingRestore` is set and accounts are still empty, the loading
-  guard renders `Loading…` rather than the accounts screen.
+- While `pendingRestore` is set, both the zero-account redirect and the
+  loading guard are skipped, so the restored home renders from the committed
+  ledger; the guard never flashes the accounts screen before the live
+  accounts query catches up.
 
 ## 12. Call Stacks
 
@@ -748,3 +756,17 @@ accounts; sync; multi-device; merging; partial backups; CSV; encryption;
 compression; checksums; an app-version field; undo after restore; backup
 history; backing up device state; storage quota display; category management;
 balances; income; transfers; last-month comparison.
+
+## 17. Implementation Notes — Close-out 2026-11-10
+
+Built as specified. The close-out audit found three implementation facts that
+were not visible in the original plan and are recorded here:
+
+- `domain/backup` also exports `byCodeUnitId`; `data/ledger` imports it so the
+  snapshot and the file share one comparator (review fix `3023178`).
+- `tsconfig.json` raises `lib` from `ES2022` to `ES2024` so tests can use
+  `Promise.withResolvers`. No dependency, DOM type, schema, or store change.
+- Review added explicit `role="status"` / `role="alert"` assertions and a
+  `markBackupSaved`-failure UI test. Behaviour is unchanged.
+
+No behavioural, interface, storage, navigation, or copy drift remains.

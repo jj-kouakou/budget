@@ -93,7 +93,8 @@ shell; the running app never needs the network. `navigator.storage.persist()`
 is requested on first launch, and the UI states plainly when storage is not
 persisted. **JSON export/import with a `schemaVersion` is a required feature**,
 not a nicety: it is the only backup and the only migration path across model
-changes.
+changes. Slice 3 fixed the v1 file shape in
+`docs/architecture/slices/slice-03-architecture.md`.
 
 ## Settled boundaries
 
@@ -105,5 +106,5 @@ changes.
 ## Deliberately left open
 
 Refund handling (negative expense vs. income), edit/delete semantics and
-whether history is audited, the category seed list, reporting charts beyond
-the headline, and the exact export file shape beyond `schemaVersion`.
+whether history is audited, the category seed list, and reporting charts
+beyond the headline.

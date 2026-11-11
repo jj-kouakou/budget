@@ -5,13 +5,13 @@ Extends `docs/architecture/north-star.md`,
 `docs/architecture/slices/slice-02-architecture.md`. It reopens nothing they
 settled; it decides only what this slice needs.
 
-## Flagged for you — the one durable contract
+## The one durable contract — confirmed by the build
 
 Everything in this slice is cheap to change except **the shape of the backup
 file**. Once a user has saved one, every future version of the app must still
 read it; changing the envelope after that means shipping a second reader.
-North-star deliberately left the shape open for this slice, so it is decided
-below — but this is the one decision to confirm before build:
+North-star deliberately left the shape open for this slice, so it was decided
+below and shipped as v1:
 
 - Envelope: `format` + `schemaVersion` + `exportedAt` + `data`.
 - `schemaVersion` is the **data-model** version — not the app version and not
@@ -22,10 +22,9 @@ below — but this is the one decision to confirm before build:
   the currency setting. Device state (`lastBackupAt`, `lastAccountId`) never
   enters a backup and survives a restore.
 
-If you want a separate envelope `formatVersion`, a different top-level shape,
-or a different ledger/device-state split, say so now. After v1 files exist,
-that change costs a compatibility reader. Everything else below is reversible
-at slice cost.
+A separate envelope `formatVersion`, a different top-level shape, or a
+different ledger/device-state split would now cost a compatibility reader
+because v1 files exist. Everything else below is reversible at slice cost.
 
 ## What this slice adds
 
@@ -176,7 +175,7 @@ either returns a current-schema `BackupFile` or throws `BackupError`:
 
 Validation, after migration:
 
-- `schemaVersion` is a positive integer; `exportedAt` parses as a date.
+- `schemaVersion` is a positive safe integer; `exportedAt` parses as a date.
 - `data` has `accounts`, `categories`, `entries` arrays and a `settings`
   object.
 - Account: non-empty string `id` and `name`; `type` is one of the three;
@@ -291,6 +290,11 @@ export class BackupError extends Error {
     message: string,
   );
 }
+
+export function byCodeUnitId(
+  left: { id: string },
+  right: { id: string },
+): number; // shared with data/ledger so snapshot and file ordering cannot diverge
 
 export function createBackupFile(data: BackupData, exportedAt: Date): BackupFile;
 export function serializeBackup(file: BackupFile): string;
