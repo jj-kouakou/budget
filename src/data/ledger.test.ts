@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Account, Entry } from '../domain/types';
 import { BudgetDatabase, SCHEMA_VERSION } from './db';
+import { BACKUP_SCHEMA_VERSION } from '../domain/backup';
+import { MAX_MONTH, MIN_MONTH } from '../domain/calendar';
 import {
   LedgerError,
   UNCATEGORIZED_CATEGORY_ID,
@@ -409,7 +411,12 @@ describe('category writes', () => {
     const summary = await ledger.monthSummary('2026-10');
     expect(summary.totalMinor).toBe(1234);
     expect(summary.rows).toEqual([
-      { categoryId: 'cat_groceries', name: 'Food', amountMinor: 1234 },
+      {
+        categoryId: 'cat_groceries',
+        name: 'Food',
+        amountMinor: 1234,
+        previousAmountMinor: 0,
+      },
     ]);
     const entries = await ledger.categoryEntries('2026-10', 'cat_groceries');
     expect(entries.categoryName).toBe('Food');
@@ -712,9 +719,21 @@ describe('monthSummary', () => {
     expect(summary).toEqual({
       month: '2026-11',
       totalMinor: 2500,
+      previousMonth: '2026-10',
+      previousMonthHasSpending: false,
       rows: [
-        { categoryId: 'cat_groceries', name: 'Groceries', amountMinor: 2000 },
-        { categoryId: 'cat_transport', name: 'Transport', amountMinor: 500 },
+        {
+          categoryId: 'cat_groceries',
+          name: 'Groceries',
+          amountMinor: 2000,
+          previousAmountMinor: 0,
+        },
+        {
+          categoryId: 'cat_transport',
+          name: 'Transport',
+          amountMinor: 500,
+          previousAmountMinor: 0,
+        },
       ],
     });
   });
@@ -807,6 +826,8 @@ describe('monthSummary', () => {
     expect(await ledger.monthSummary('2026-11')).toEqual({
       month: '2026-11',
       totalMinor: 0,
+      previousMonth: '2026-10',
+      previousMonthHasSpending: false,
       rows: [],
     });
   });
@@ -825,11 +846,14 @@ describe('monthSummary', () => {
     expect(await ledger.monthSummary('2026-11')).toEqual({
       month: '2026-11',
       totalMinor: 750,
+      previousMonth: '2026-10',
+      previousMonthHasSpending: false,
       rows: [
         {
           categoryId: 'cat_missing',
           name: 'Uncategorized',
           amountMinor: 750,
+          previousAmountMinor: 0,
         },
       ],
     });
@@ -875,7 +899,12 @@ describe('monthSummary', () => {
 
     expect(summary.totalMinor).toBe(400);
     expect(summary.rows).toEqual([
-      { categoryId: 'cat_other', name: 'Other', amountMinor: 400 },
+      {
+        categoryId: 'cat_other',
+        name: 'Other',
+        amountMinor: 400,
+        previousAmountMinor: 0,
+      },
     ]);
   });
 
@@ -883,6 +912,625 @@ describe('monthSummary', () => {
     const { ledger } = await setup();
 
     await expect(ledger.monthSummary('2026-13')).rejects.toThrow(RangeError);
+  });
+
+  describe('comparison', () => {
+    it('returns both months for categories with spending in either', async () => {
+      const { ledger, checking } = await setup();
+      await ledger.addExpense({
+        amountMinor: 1500,
+        categoryId: 'cat_groceries',
+        accountId: checking.id,
+        date: '2026-10-05',
+      });
+      await ledger.addExpense({
+        amountMinor: 300,
+        categoryId: 'cat_health',
+        accountId: checking.id,
+        date: '2026-10-06',
+      });
+      await ledger.addExpense({
+        amountMinor: 1200,
+        categoryId: 'cat_groceries',
+        accountId: checking.id,
+        date: '2026-11-02',
+      });
+      await ledger.addExpense({
+        amountMinor: 800,
+        categoryId: 'cat_groceries',
+        accountId: checking.id,
+        date: '2026-11-03',
+      });
+      await ledger.addExpense({
+        amountMinor: 500,
+        categoryId: 'cat_transport',
+        accountId: checking.id,
+        date: '2026-11-04',
+      });
+
+      expect(await ledger.monthSummary('2026-11')).toEqual({
+        month: '2026-11',
+        totalMinor: 2500,
+        previousMonth: '2026-10',
+        previousMonthHasSpending: true,
+        rows: [
+          {
+            categoryId: 'cat_groceries',
+            name: 'Groceries',
+            amountMinor: 2000,
+            previousAmountMinor: 1500,
+          },
+          {
+            categoryId: 'cat_transport',
+            name: 'Transport',
+            amountMinor: 500,
+            previousAmountMinor: 0,
+          },
+          {
+            categoryId: 'cat_health',
+            name: 'Health',
+            amountMinor: 0,
+            previousAmountMinor: 300,
+          },
+        ],
+      });
+    });
+
+    it('zero-fills the previous amount when only the current month has spending', async () => {
+      const { ledger, checking } = await setup();
+      await ledger.addExpense({
+        amountMinor: 500,
+        categoryId: 'cat_groceries',
+        accountId: checking.id,
+        date: '2026-11-02',
+      });
+      await ledger.addExpense({
+        amountMinor: 300,
+        categoryId: 'cat_transport',
+        accountId: checking.id,
+        date: '2026-11-03',
+      });
+
+      expect(await ledger.monthSummary('2026-11')).toEqual({
+        month: '2026-11',
+        totalMinor: 800,
+        previousMonth: '2026-10',
+        previousMonthHasSpending: false,
+        rows: [
+          {
+            categoryId: 'cat_groceries',
+            name: 'Groceries',
+            amountMinor: 500,
+            previousAmountMinor: 0,
+          },
+          {
+            categoryId: 'cat_transport',
+            name: 'Transport',
+            amountMinor: 300,
+            previousAmountMinor: 0,
+          },
+        ],
+      });
+    });
+
+    it('zero-fills the current amount when only the previous month has spending', async () => {
+      const { ledger, checking } = await setup();
+      await ledger.addExpense({
+        amountMinor: 1000,
+        categoryId: 'cat_groceries',
+        accountId: checking.id,
+        date: '2026-10-05',
+      });
+      await ledger.addExpense({
+        amountMinor: 300,
+        categoryId: 'cat_health',
+        accountId: checking.id,
+        date: '2026-10-06',
+      });
+
+      expect(await ledger.monthSummary('2026-11')).toEqual({
+        month: '2026-11',
+        totalMinor: 0,
+        previousMonth: '2026-10',
+        previousMonthHasSpending: true,
+        rows: [
+          {
+            categoryId: 'cat_groceries',
+            name: 'Groceries',
+            amountMinor: 0,
+            previousAmountMinor: 1000,
+          },
+          {
+            categoryId: 'cat_health',
+            name: 'Health',
+            amountMinor: 0,
+            previousAmountMinor: 300,
+          },
+        ],
+      });
+    });
+
+    it('returns no rows when neither month has spending', async () => {
+      const { ledger } = await setup();
+
+      expect(await ledger.monthSummary('2026-11')).toEqual({
+        month: '2026-11',
+        totalMinor: 0,
+        previousMonth: '2026-10',
+        previousMonthHasSpending: false,
+        rows: [],
+      });
+    });
+
+    it('orders current rows first, then previous-only rows, with name and id tie-breaks', async () => {
+      const { db, ledger, checking } = await setup();
+      await db.categories.bulkAdd([
+        { id: 'cat_a_same_current', name: 'Same current', archived: false },
+        { id: 'cat_z_same_current', name: 'Same current', archived: false },
+        { id: 'cat_a_same_prev', name: 'Same prev', archived: false },
+        { id: 'cat_z_same_prev', name: 'Same prev', archived: false },
+      ]);
+      await ledger.addExpense({
+        amountMinor: 900,
+        categoryId: 'cat_fun',
+        accountId: checking.id,
+        date: '2026-11-01',
+      });
+      await ledger.addExpense({
+        amountMinor: 500,
+        categoryId: 'cat_groceries',
+        accountId: checking.id,
+        date: '2026-11-02',
+      });
+      await ledger.addExpense({
+        amountMinor: 500,
+        categoryId: 'cat_health',
+        accountId: checking.id,
+        date: '2026-11-03',
+      });
+      await ledger.addExpense({
+        amountMinor: 200,
+        categoryId: 'cat_z_same_current',
+        accountId: checking.id,
+        date: '2026-11-04',
+      });
+      await ledger.addExpense({
+        amountMinor: 200,
+        categoryId: 'cat_a_same_current',
+        accountId: checking.id,
+        date: '2026-11-05',
+      });
+      await ledger.addExpense({
+        amountMinor: 50,
+        categoryId: 'cat_fun',
+        accountId: checking.id,
+        date: '2026-10-01',
+      });
+      await ledger.addExpense({
+        amountMinor: 700,
+        categoryId: 'cat_housing',
+        accountId: checking.id,
+        date: '2026-10-02',
+      });
+      await ledger.addExpense({
+        amountMinor: 400,
+        categoryId: 'cat_transport',
+        accountId: checking.id,
+        date: '2026-10-03',
+      });
+      await ledger.addExpense({
+        amountMinor: 400,
+        categoryId: 'cat_bills',
+        accountId: checking.id,
+        date: '2026-10-04',
+      });
+      await ledger.addExpense({
+        amountMinor: 100,
+        categoryId: 'cat_z_same_prev',
+        accountId: checking.id,
+        date: '2026-10-05',
+      });
+      await ledger.addExpense({
+        amountMinor: 100,
+        categoryId: 'cat_a_same_prev',
+        accountId: checking.id,
+        date: '2026-10-06',
+      });
+
+      const summary = await ledger.monthSummary('2026-11');
+
+      expect(summary.rows.map((row) => row.categoryId)).toEqual([
+        'cat_fun',
+        'cat_groceries',
+        'cat_health',
+        'cat_a_same_current',
+        'cat_z_same_current',
+        'cat_housing',
+        'cat_bills',
+        'cat_transport',
+        'cat_a_same_prev',
+        'cat_z_same_prev',
+      ]);
+      expect(summary.rows[5]?.previousAmountMinor).toBe(700);
+      expect(summary.rows[9]?.previousAmountMinor).toBe(100);
+    });
+
+    it('compares January with the previous December', async () => {
+      const { ledger, checking } = await setup();
+      await ledger.addExpense({
+        amountMinor: 800,
+        categoryId: 'cat_groceries',
+        accountId: checking.id,
+        date: '2026-12-05',
+      });
+      await ledger.addExpense({
+        amountMinor: 500,
+        categoryId: 'cat_groceries',
+        accountId: checking.id,
+        date: '2027-01-05',
+      });
+
+      expect(await ledger.monthSummary('2027-01')).toEqual({
+        month: '2027-01',
+        totalMinor: 500,
+        previousMonth: '2026-12',
+        previousMonthHasSpending: true,
+        rows: [
+          {
+            categoryId: 'cat_groceries',
+            name: 'Groceries',
+            amountMinor: 500,
+            previousAmountMinor: 800,
+          },
+        ],
+      });
+    });
+
+    it('returns a null predecessor at the lower bound and a real one at the upper bound', async () => {
+      const { ledger } = await setup();
+
+      expect(await ledger.monthSummary(MIN_MONTH)).toEqual({
+        month: MIN_MONTH,
+        totalMinor: 0,
+        previousMonth: null,
+        previousMonthHasSpending: false,
+        rows: [],
+      });
+
+      const upper = await ledger.monthSummary(MAX_MONTH);
+      expect(upper.previousMonth).toBe('9999-11');
+      expect(upper.previousMonthHasSpending).toBe(false);
+    });
+
+    it('keeps totalMinor as the sum of current amounts only', async () => {
+      const { ledger, checking } = await setup();
+      await ledger.addExpense({
+        amountMinor: 300,
+        categoryId: 'cat_health',
+        accountId: checking.id,
+        date: '2026-10-05',
+      });
+      await ledger.addExpense({
+        amountMinor: 500,
+        categoryId: 'cat_groceries',
+        accountId: checking.id,
+        date: '2026-11-05',
+      });
+
+      const summary = await ledger.monthSummary('2026-11');
+
+      expect(summary.totalMinor).toBe(500);
+      expect(summary.totalMinor).toBe(
+        summary.rows.reduce((sum, row) => sum + row.amountMinor, 0),
+      );
+      expect(summary.rows.find((row) => row.categoryId === 'cat_health')).toEqual(
+        {
+          categoryId: 'cat_health',
+          name: 'Health',
+          amountMinor: 0,
+          previousAmountMinor: 300,
+        },
+      );
+    });
+
+    it('ignores non-expense kinds in both months and an income-only predecessor', async () => {
+      const { db, ledger, checking } = await setup();
+      await db.entries.bulkAdd([
+        {
+          id: 'oct-income',
+          kind: 'income',
+          date: '2026-10-01',
+          amountMinor: 2000,
+          accountId: checking.id,
+          categoryId: 'cat_other',
+        },
+        {
+          id: 'oct-transfer',
+          kind: 'transfer',
+          date: '2026-10-02',
+          amountMinor: 500,
+          accountId: checking.id,
+          toAccountId: checking.id,
+        },
+        {
+          id: 'oct-opening',
+          kind: 'opening',
+          date: '2026-10-03',
+          amountMinor: -3000,
+          accountId: checking.id,
+        },
+        {
+          id: 'nov-income',
+          kind: 'income',
+          date: '2026-11-01',
+          amountMinor: 1000,
+          accountId: checking.id,
+          categoryId: 'cat_other',
+        },
+        {
+          id: 'nov-transfer',
+          kind: 'transfer',
+          date: '2026-11-02',
+          amountMinor: 500,
+          accountId: checking.id,
+          toAccountId: checking.id,
+        },
+        {
+          id: 'nov-opening',
+          kind: 'opening',
+          date: '2026-11-03',
+          amountMinor: -3000,
+          accountId: checking.id,
+        },
+        {
+          id: 'nov-expense',
+          kind: 'expense',
+          date: '2026-11-04',
+          amountMinor: 400,
+          accountId: checking.id,
+          categoryId: 'cat_groceries',
+        },
+      ]);
+
+      expect(await ledger.monthSummary('2026-11')).toEqual({
+        month: '2026-11',
+        totalMinor: 400,
+        previousMonth: '2026-10',
+        previousMonthHasSpending: false,
+        rows: [
+          {
+            categoryId: 'cat_groceries',
+            name: 'Groceries',
+            amountMinor: 400,
+            previousAmountMinor: 0,
+          },
+        ],
+      });
+      expect(await ledger.monthSummary('2026-10')).toEqual({
+        month: '2026-10',
+        totalMinor: 0,
+        previousMonth: '2026-09',
+        previousMonthHasSpending: false,
+        rows: [],
+      });
+    });
+
+    it('keeps a missing category id and the sentinel as distinct rows', async () => {
+      const { db, ledger, checking } = await setup();
+      await db.entries.bulkAdd([
+        {
+          id: 'nov-missing-category',
+          kind: 'expense',
+          date: '2026-11-02',
+          amountMinor: 750,
+          accountId: checking.id,
+          categoryId: 'cat_missing',
+        },
+        {
+          id: 'nov-no-category',
+          kind: 'expense',
+          date: '2026-11-03',
+          amountMinor: 250,
+          accountId: checking.id,
+        },
+      ]);
+
+      expect((await ledger.monthSummary('2026-11')).rows).toEqual([
+        {
+          categoryId: 'cat_missing',
+          name: UNCATEGORIZED_LABEL,
+          amountMinor: 750,
+          previousAmountMinor: 0,
+        },
+        {
+          categoryId: UNCATEGORIZED_CATEGORY_ID,
+          name: UNCATEGORIZED_LABEL,
+          amountMinor: 250,
+          previousAmountMinor: 0,
+        },
+      ]);
+    });
+
+    it('shows a renamed category in both columns and keeps an archived one', async () => {
+      const { ledger, checking } = await setup();
+      await ledger.addExpense({
+        amountMinor: 1000,
+        categoryId: 'cat_groceries',
+        accountId: checking.id,
+        date: '2026-10-05',
+      });
+      await ledger.addExpense({
+        amountMinor: 500,
+        categoryId: 'cat_groceries',
+        accountId: checking.id,
+        date: '2026-11-05',
+      });
+
+      await ledger.renameCategory('cat_groceries', 'Food');
+
+      expect((await ledger.monthSummary('2026-11')).rows).toEqual([
+        {
+          categoryId: 'cat_groceries',
+          name: 'Food',
+          amountMinor: 500,
+          previousAmountMinor: 1000,
+        },
+      ]);
+      expect((await ledger.monthSummary('2026-10')).rows).toEqual([
+        {
+          categoryId: 'cat_groceries',
+          name: 'Food',
+          amountMinor: 1000,
+          previousAmountMinor: 0,
+        },
+      ]);
+
+      await ledger.setCategoryArchived('cat_groceries', true);
+
+      expect((await ledger.monthSummary('2026-11')).rows).toEqual([
+        {
+          categoryId: 'cat_groceries',
+          name: 'Food',
+          amountMinor: 500,
+          previousAmountMinor: 1000,
+        },
+      ]);
+      expect((await ledger.monthSummary('2026-10')).rows).toEqual([
+        {
+          categoryId: 'cat_groceries',
+          name: 'Food',
+          amountMinor: 1000,
+          previousAmountMinor: 0,
+        },
+      ]);
+    });
+
+    it('reflects corrections and removals in both months', async () => {
+      const { ledger, checking } = await setup();
+      const entry = await ledger.addExpense({
+        amountMinor: 1000,
+        categoryId: 'cat_groceries',
+        accountId: checking.id,
+        date: '2026-11-02',
+      });
+
+      await ledger.updateExpense(entry.id, {
+        amountMinor: 700,
+        categoryId: 'cat_transport',
+        accountId: checking.id,
+        date: '2026-10-15',
+      });
+
+      expect(await ledger.monthSummary('2026-10')).toEqual({
+        month: '2026-10',
+        totalMinor: 700,
+        previousMonth: '2026-09',
+        previousMonthHasSpending: false,
+        rows: [
+          {
+            categoryId: 'cat_transport',
+            name: 'Transport',
+            amountMinor: 700,
+            previousAmountMinor: 0,
+          },
+        ],
+      });
+      expect(await ledger.monthSummary('2026-11')).toEqual({
+        month: '2026-11',
+        totalMinor: 0,
+        previousMonth: '2026-10',
+        previousMonthHasSpending: true,
+        rows: [
+          {
+            categoryId: 'cat_transport',
+            name: 'Transport',
+            amountMinor: 0,
+            previousAmountMinor: 700,
+          },
+        ],
+      });
+
+      await ledger.updateExpense(entry.id, {
+        amountMinor: 700,
+        categoryId: 'cat_fun',
+        accountId: checking.id,
+        date: '2026-10-15',
+      });
+
+      expect((await ledger.monthSummary('2026-10')).rows).toEqual([
+        {
+          categoryId: 'cat_fun',
+          name: 'Fun',
+          amountMinor: 700,
+          previousAmountMinor: 0,
+        },
+      ]);
+      expect((await ledger.monthSummary('2026-11')).rows).toEqual([
+        {
+          categoryId: 'cat_fun',
+          name: 'Fun',
+          amountMinor: 0,
+          previousAmountMinor: 700,
+        },
+      ]);
+
+      await ledger.deleteExpense(entry.id);
+
+      expect(await ledger.monthSummary('2026-10')).toEqual({
+        month: '2026-10',
+        totalMinor: 0,
+        previousMonth: '2026-09',
+        previousMonthHasSpending: false,
+        rows: [],
+      });
+      expect(await ledger.monthSummary('2026-11')).toEqual({
+        month: '2026-11',
+        totalMinor: 0,
+        previousMonth: '2026-10',
+        previousMonthHasSpending: false,
+        rows: [],
+      });
+    });
+
+    it('agrees with categoryEntries for current and previous-only rows', async () => {
+      const { ledger, checking } = await setup();
+      await ledger.addExpense({
+        amountMinor: 1000,
+        categoryId: 'cat_groceries',
+        accountId: checking.id,
+        date: '2026-10-05',
+      });
+      await ledger.addExpense({
+        amountMinor: 300,
+        categoryId: 'cat_health',
+        accountId: checking.id,
+        date: '2026-10-06',
+      });
+      await ledger.addExpense({
+        amountMinor: 500,
+        categoryId: 'cat_groceries',
+        accountId: checking.id,
+        date: '2026-11-05',
+      });
+
+      const summary = await ledger.monthSummary('2026-11');
+      for (const row of summary.rows) {
+        const list = await ledger.categoryEntries('2026-11', row.categoryId);
+        expect(list.totalMinor).toBe(row.amountMinor);
+      }
+
+      const previousOnly = await ledger.categoryEntries(
+        '2026-11',
+        'cat_health',
+      );
+      expect(previousOnly.totalMinor).toBe(0);
+      expect(previousOnly.rows).toEqual([]);
+    });
+
+    it('keeps the schema and backup versions at 1', () => {
+      expect(SCHEMA_VERSION).toBe(1);
+      expect(BACKUP_SCHEMA_VERSION).toBe(1);
+    });
   });
 });
 
@@ -1120,6 +1768,7 @@ describe('categoryEntries', () => {
         categoryId: UNCATEGORIZED_CATEGORY_ID,
         name: UNCATEGORIZED_LABEL,
         amountMinor: 750,
+        previousAmountMinor: 0,
       },
     ]);
   });
@@ -1432,15 +2081,29 @@ describe('updateExpense', () => {
     expect(await ledger.monthSummary('2026-11')).toEqual({
       month: '2026-11',
       totalMinor: 500,
+      previousMonth: '2026-10',
+      previousMonthHasSpending: false,
       rows: [
-        { categoryId: 'cat_transport', name: 'Transport', amountMinor: 500 },
+        {
+          categoryId: 'cat_transport',
+          name: 'Transport',
+          amountMinor: 500,
+          previousAmountMinor: 0,
+        },
       ],
     });
     expect(await ledger.monthSummary('2026-12')).toEqual({
       month: '2026-12',
       totalMinor: 700,
+      previousMonth: '2026-11',
+      previousMonthHasSpending: true,
       rows: [
-        { categoryId: 'cat_transport', name: 'Transport', amountMinor: 700 },
+        {
+          categoryId: 'cat_transport',
+          name: 'Transport',
+          amountMinor: 700,
+          previousAmountMinor: 500,
+        },
       ],
     });
   });
@@ -1609,8 +2272,15 @@ describe('deleteExpense', () => {
     expect(await ledger.monthSummary('2026-11')).toEqual({
       month: '2026-11',
       totalMinor: 500,
+      previousMonth: '2026-10',
+      previousMonthHasSpending: false,
       rows: [
-        { categoryId: 'cat_groceries', name: 'Groceries', amountMinor: 500 },
+        {
+          categoryId: 'cat_groceries',
+          name: 'Groceries',
+          amountMinor: 500,
+          previousAmountMinor: 0,
+        },
       ],
     });
   });
@@ -1629,6 +2299,8 @@ describe('deleteExpense', () => {
     expect(await ledger.monthSummary('2026-11')).toEqual({
       month: '2026-11',
       totalMinor: 0,
+      previousMonth: '2026-10',
+      previousMonthHasSpending: false,
       rows: [],
     });
   });

@@ -4,11 +4,12 @@
 - **Sources:** `docs/program-design/slices/slice-05-spec.md` (cited as
   "Spec §…"), `docs/architecture/slices/slice-05-architecture.md`,
   `docs/product/slices/slice-05-scope.md`, ADRs 0001/0005, `CONTEXT.md`.
-- **Branch:** `slice-05`, cut from `master` after slices 3 and 4 merge and
-  deploy (Spec header). Not cut yet — see boundary decision 6.
-- **Status:** approved. Boundary decisions 1 and 6 were confirmed by the user
-  before the build; the rest are recorded so the build does not re-litigate
-  them.
+- **Branch:** `slice-05`, cut at `faf2a97` after slices 3 and 4 merged into
+  `master`. Deploying slices 3 and 4 did **not** happen first; the merge half
+  of boundary decision 6 was done and the deploy half is still open.
+- **Status:** completed 2026-11-10. Boundary decisions 1 and 6 were confirmed
+  by the user before the build; the rest are recorded so the build does not
+  re-litigate them. Tickets 1–3 are implemented, tested, and reviewed.
 
 Each ticket is one build session, test-first, and one commit when its tests
 pass. Every ticket leaves the suite green and the home screen correct for the
@@ -99,7 +100,12 @@ dependency, not the test numbering.
    tree is on `slice-04`, which is complete but not merged, and the slice-05
    docs are untracked on it. Cut `slice-05` from `master` only after slices 3
    and 4 merge and deploy, as the spec header requires. Do not start ticket 1
-   on the current branch.
+   on the current branch. **Build deviation, recorded:** `master` already held
+   slice 3 but not slice 4, so the slice-05 docs were committed on `slice-04`,
+   `slice-04` was merged into `master` with `--no-ff` (`faf2a97`), and
+   `slice-05` was cut from that merge. Deployment was not performed; slices
+   3 and 4 are merged locally, slice 5 is not yet merged, and the deployed
+   site is still slice 2.
 7. **Decided — no backup, offline, or glossary ticket.** The comparison is
    never serialized and `CONTEXT.md` gains no term (Spec §11). Backup/restore
    and offline are manual acceptance checks in ticket 3 and the slice
@@ -211,23 +217,23 @@ Update the existing exact assertions per the table above.
 
 **Acceptance criteria**
 
-- [ ] `monthSummary` returns the three new fields and every row carries
+- [x] `monthSummary` returns the three new fields and every row carries
       `previousAmountMinor`.
-- [ ] Both month reads and the name join happen in one `'r'` transaction over
+- [x] Both month reads and the name join happen in one `'r'` transaction over
       `entries` and `categories`; `bulkGet` is inside it.
-- [ ] `previousMonth` is the calendar month immediately before, or `null`
+- [x] `previousMonth` is the calendar month immediately before, or `null`
       exactly at `MIN_MONTH`; January and `MAX_MONTH` are covered.
-- [ ] Rows are the union of expense categories in both months, zero-filled on
+- [x] Rows are the union of expense categories in both months, zero-filled on
       the missing side; no zero/zero row exists for reachable data.
-- [ ] Current-month ordering is byte-for-byte the pre-slice order; previous
+- [x] Current-month ordering is byte-for-byte the pre-slice order; previous
       amounts never reorder two current rows.
-- [ ] `totalMinor` is the sum of current amounts only.
-- [ ] `previousMonthHasSpending` is true iff the previous month has at least
+- [x] `totalMinor` is the sum of current amounts only.
+- [x] `previousMonthHasSpending` is true iff the previous month has at least
       one expense; false at `MIN_MONTH` and for income-only previous months.
-- [ ] Renames, archives, corrections, and removals are reflected without any
+- [x] Renames, archives, corrections, and removals are reflected without any
       write-path change.
-- [ ] Existing assertions change only to include the new fields.
-- [ ] `npm test` and `npm run typecheck` pass; the home screen is unchanged.
+- [x] Existing assertions change only to include the new fields.
+- [x] `npm test` and `npm run typecheck` pass; the home screen is unchanged.
 
 ---
 
@@ -300,21 +306,21 @@ prohibitions), §8.4 cases 1–3, 5, 6, 8–12.
 
 **Acceptance criteria**
 
-- [ ] With previous-month spending, the header names both months and every row
+- [x] With previous-month spending, the header names both months and every row
       shows both amounts; the missing side reads as a formatted zero.
-- [ ] Previous-only rows follow all current rows, are disabled, stay in the
+- [x] Previous-only rows follow all current rows, are disabled, stay in the
       list and accessibility tree, and cannot navigate.
-- [ ] Enabled rows navigate to the category entries route for the displayed
+- [x] Enabled rows navigate to the category entries route for the displayed
       month; no row navigates to the previous month.
-- [ ] The total is unchanged by the previous column and still reads as the
+- [x] The total is unchanged by the previous column and still reads as the
       month on screen.
-- [ ] The current-empty/previous-populated state renders the header, both
+- [x] The current-empty/previous-populated state renders the header, both
       columns, all-disabled rows, and `Add expense`, with no empty state.
-- [ ] The neither-month state is the unchanged empty state.
-- [ ] Renames, archives, corrections, and removals update both columns live.
-- [ ] Rows render in ledger order; the UI does not sort, merge, or filter.
-- [ ] Columns align across rows at 320px and 360px; no horizontal page scroll.
-- [ ] `npm test` and `npm run typecheck` pass.
+- [x] The neither-month state is the unchanged empty state.
+- [x] Renames, archives, corrections, and removals update both columns live.
+- [x] Rows render in ledger order; the UI does not sort, merge, or filter.
+- [x] Columns align across rows at 320px and 360px; no horizontal page scroll.
+- [x] `npm test` and `npm run typecheck` pass.
 
 ---
 
@@ -357,16 +363,44 @@ plain line and keeps the current month's single amount per row. At
 
 **Acceptance criteria**
 
-- [ ] Previous-month-empty shows exactly
+- [x] Previous-month-empty shows exactly
       `No spending recorded in {formatMonth(previousMonth)}.` including the
       final period, above the list, with no column of zeros and no header.
-- [ ] `MIN_MONTH` shows the current month alone with no note and no header,
+- [x] `MIN_MONTH` shows the current month alone with no note and no header,
       and does not throw.
-- [ ] The note appears in no other state.
-- [ ] `Add expense` remains available whenever rows exist.
-- [ ] Manual pass (Spec §8.6): build and preview, install, go offline; check
+- [x] The note appears in no other state.
+- [x] `Add expense` remains available whenever rows exist.
+- [x] Manual pass (Spec §8.6): build and preview, install, go offline; check
       both columns, the note, current-empty with `Add expense`, a previous-only
       row that does not navigate, rename, archive, a correction across the
       month boundary, and backup/restore in a fresh profile; one phone width
-      and one desktop width with no horizontal scroll.
-- [ ] `npm test` and `npm run typecheck` pass.
+      and one desktop width with no horizontal scroll. **Close-out evidence:**
+      production build via `vite preview`; backup downloaded through the UI
+      from a populated ledger and restored into a brand-new browser profile
+      (fresh `--user-data-dir`), reproducing the comparison exactly;
+      `Page.getInstallabilityErrors` returned none with an active service
+      worker and a valid manifest; offline reload rendered the comparison;
+      column x-positions matched exactly at 320/360/390/1280 px with
+      `scrollWidth === clientWidth`. Rename, archive, cross-boundary
+      correction, and the previous-only non-navigation row were verified in
+      the build session's browser pass. A physical phone install and
+      screen-reader output were not exercised.
+- [x] `npm test` and `npm run typecheck` pass.
+
+---
+
+## Slice close-out
+
+- [x] All three tickets pass their tests; `npm test` (427 passed, 16 files)
+      and `npm run typecheck` are green on `slice-05`.
+- [x] `code-review` approved with zero findings on both axes (standards and
+      spec/acceptance); no review-fixes commit was needed.
+- [x] The architecture, spec, and these tickets reflect what was built; no
+      production divergence was found, and both version constants remain `1`.
+- [x] `AGENTS.md` needs no change: this slice added no doc path — the scope,
+      architecture, spec, tickets, and handoffs all live in folders it already
+      lists.
+- [x] `docs/product/backlog.md` marks slice 5 complete and confirms slice 6
+      (account balances) as the next slice to pull, with deployment of slices
+      3–5 as the outstanding release step.
+- [x] Slice handoff written to `docs/agents/slice-05-closeout-handoff.md`.

@@ -7,7 +7,12 @@ import type {
   MonthKey,
   Settings,
 } from '../domain/types';
-import { isValidLocalDate, isValidMonthKey } from '../domain/calendar';
+import {
+  MIN_MONTH,
+  addMonths,
+  isValidLocalDate,
+  isValidMonthKey,
+} from '../domain/calendar';
 import { byCodeUnitId } from '../domain/backup';
 import type { BackupData } from '../domain/backup';
 import type { BudgetDatabase } from './db';
@@ -49,12 +54,47 @@ export interface CategorySpend {
   categoryId: string;
   name: string;
   amountMinor: number;
+  previousAmountMinor: number;
 }
 
 export interface MonthSummary {
   month: MonthKey;
   totalMinor: number;
+  previousMonth: MonthKey | null;
+  previousMonthHasSpending: boolean;
   rows: CategorySpend[];
+}
+
+function expenseTotals(entries: Entry[]): Map<string, number> {
+  const totals = new Map<string, number>();
+  for (const entry of entries) {
+    if (entry.kind !== 'expense') {
+      continue;
+    }
+    const categoryId = entry.categoryId ?? UNCATEGORIZED_CATEGORY_ID;
+    totals.set(categoryId, (totals.get(categoryId) ?? 0) + entry.amountMinor);
+  }
+  return totals;
+}
+
+function compareSummaryRows(left: CategorySpend, right: CategorySpend): number {
+  const leftHasCurrent = left.amountMinor > 0;
+  const rightHasCurrent = right.amountMinor > 0;
+  if (leftHasCurrent !== rightHasCurrent) {
+    return leftHasCurrent ? -1 : 1;
+  }
+  if (leftHasCurrent) {
+    return (
+      right.amountMinor - left.amountMinor ||
+      left.name.localeCompare(right.name) ||
+      left.categoryId.localeCompare(right.categoryId)
+    );
+  }
+  return (
+    right.previousAmountMinor - left.previousAmountMinor ||
+    left.name.localeCompare(right.name) ||
+    left.categoryId.localeCompare(right.categoryId)
+  );
 }
 
 export type LedgerErrorCode =
@@ -354,53 +394,58 @@ export function createLedger(db: BudgetDatabase): Ledger {
         throw new RangeError('Invalid month key');
       }
 
-      const entries = await db.entries
-        .where('date')
-        .startsWith(month)
-        .toArray();
+      return db.transaction('r', db.entries, db.categories, async () => {
+        const previousMonth = month === MIN_MONTH ? null : addMonths(month, -1);
 
-      const totals = new Map<string, number>();
-      for (const entry of entries) {
-        if (entry.kind !== 'expense') {
-          continue;
-        }
-        const categoryId = entry.categoryId ?? UNCATEGORIZED_CATEGORY_ID;
-        totals.set(categoryId, (totals.get(categoryId) ?? 0) + entry.amountMinor);
-      }
+        const currentEntries = await db.entries
+          .where('date')
+          .startsWith(month)
+          .toArray();
+        const previousEntries =
+          previousMonth === null
+            ? []
+            : await db.entries
+                .where('date')
+                .startsWith(previousMonth)
+                .toArray();
 
-      const categoryIds = [...totals.keys()].filter(
-        (id) => id !== UNCATEGORIZED_CATEGORY_ID,
-      );
-      const categories = await db.categories.bulkGet(categoryIds);
-      const names = new Map<string, string>();
-      categories.forEach((category, index) => {
-        const categoryId = categoryIds[index];
-        if (category && categoryId !== undefined) {
-          names.set(categoryId, category.name);
-        }
+        const currentTotals = expenseTotals(currentEntries);
+        const previousTotals = expenseTotals(previousEntries);
+
+        const categoryIds = [
+          ...new Set([...currentTotals.keys(), ...previousTotals.keys()]),
+        ];
+        const namedIds = categoryIds.filter(
+          (id) => id !== UNCATEGORIZED_CATEGORY_ID,
+        );
+        const categories = await db.categories.bulkGet(namedIds);
+        const names = new Map<string, string>();
+        categories.forEach((category, index) => {
+          const categoryId = namedIds[index];
+          if (category && categoryId !== undefined) {
+            names.set(categoryId, category.name);
+          }
+        });
+
+        const rows: CategorySpend[] = categoryIds.map((categoryId) => ({
+          categoryId,
+          name:
+            categoryId === UNCATEGORIZED_CATEGORY_ID
+              ? UNCATEGORIZED_LABEL
+              : (names.get(categoryId) ?? UNCATEGORIZED_LABEL),
+          amountMinor: currentTotals.get(categoryId) ?? 0,
+          previousAmountMinor: previousTotals.get(categoryId) ?? 0,
+        }));
+        rows.sort(compareSummaryRows);
+
+        return {
+          month,
+          totalMinor: rows.reduce((sum, row) => sum + row.amountMinor, 0),
+          previousMonth,
+          previousMonthHasSpending: previousTotals.size > 0,
+          rows,
+        };
       });
-
-      const rows = [...totals].map(([categoryId, amountMinor]) => ({
-        categoryId,
-        name:
-          categoryId === UNCATEGORIZED_CATEGORY_ID
-            ? UNCATEGORIZED_LABEL
-            : (names.get(categoryId) ?? UNCATEGORIZED_LABEL),
-        amountMinor,
-      }));
-
-      rows.sort(
-        (left, right) =>
-          right.amountMinor - left.amountMinor ||
-          left.name.localeCompare(right.name) ||
-          left.categoryId.localeCompare(right.categoryId),
-      );
-
-      return {
-        month,
-        totalMinor: rows.reduce((sum, row) => sum + row.amountMinor, 0),
-        rows,
-      };
     },
 
     async updateExpense(id, input) {

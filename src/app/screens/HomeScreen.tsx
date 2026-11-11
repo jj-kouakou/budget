@@ -7,9 +7,30 @@ import {
   formatMonth,
 } from '../../domain/calendar';
 import { formatAmount } from '../../domain/money';
-import type { Ledger } from '../../data/ledger';
+import type { Ledger, MonthSummary } from '../../data/ledger';
 import { navigate } from '../router';
 import { useStorageStatus } from '../storage';
+
+type HomeBreakdown =
+  | { kind: 'empty' }
+  | { kind: 'current-only'; note: string | null }
+  | { kind: 'comparison'; previousMonth: MonthKey };
+
+function homeBreakdown(summary: MonthSummary): HomeBreakdown {
+  if (summary.rows.length === 0) {
+    return { kind: 'empty' };
+  }
+  if (summary.previousMonth === null) {
+    return { kind: 'current-only', note: null };
+  }
+  if (!summary.previousMonthHasSpending) {
+    return {
+      kind: 'current-only',
+      note: `No spending recorded in ${formatMonth(summary.previousMonth)}.`,
+    };
+  }
+  return { kind: 'comparison', previousMonth: summary.previousMonth };
+}
 
 export function HomeScreen({
   ledger,
@@ -34,6 +55,7 @@ export function HomeScreen({
     settings.currency,
     settings.currencyExponent,
   );
+  const breakdown = homeBreakdown(summary);
 
   return (
     <section>
@@ -77,7 +99,7 @@ export function HomeScreen({
         Spent <strong>{total}</strong>
       </p>
 
-      {summary.rows.length === 0 ? (
+      {breakdown.kind === 'empty' ? (
         <div className="empty-state">
           <p>No spending yet this month.</p>
           <button
@@ -88,8 +110,66 @@ export function HomeScreen({
             Add your first expense
           </button>
         </div>
+      ) : breakdown.kind === 'comparison' ? (
+        <div className="home-comparison">
+          <div className="comparison-header">
+            <span />
+            <span>{formatMonth(month)}</span>
+            <span>{formatMonth(breakdown.previousMonth)}</span>
+          </div>
+          <ul className="category-list">
+            {summary.rows.map((row) => {
+              const current = formatAmount(
+                row.amountMinor,
+                settings.currency,
+                settings.currencyExponent,
+              );
+              const previous = formatAmount(
+                row.previousAmountMinor,
+                settings.currency,
+                settings.currencyExponent,
+              );
+              const tappable = row.amountMinor > 0;
+              return (
+                <li key={row.categoryId}>
+                  <button
+                    type="button"
+                    disabled={!tappable}
+                    aria-label={`${row.name}, ${formatMonth(month)}: ${current}, ${formatMonth(breakdown.previousMonth)}: ${previous}`}
+                    onClick={
+                      tappable
+                        ? () =>
+                            navigate({
+                              name: 'category',
+                              month,
+                              categoryId: row.categoryId,
+                            })
+                        : undefined
+                    }
+                  >
+                    <span className="comparison-name">{row.name}</span>
+                    <span className="comparison-amount">{current}</span>
+                    <span className="comparison-amount">{previous}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+          <div className="actions">
+            <button
+              type="button"
+              className="button-primary"
+              onClick={() => navigate({ name: 'add' })}
+            >
+              Add expense
+            </button>
+          </div>
+        </div>
       ) : (
         <>
+          {breakdown.note === null ? null : (
+            <p className="comparison-note">{breakdown.note}</p>
+          )}
           <ul className="category-list">
             {summary.rows.map((row) => {
               const formattedAmount = formatAmount(
