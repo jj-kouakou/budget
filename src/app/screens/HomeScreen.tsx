@@ -20,8 +20,14 @@ function homeBreakdown(summary: MonthSummary): HomeBreakdown {
   if (summary.rows.length === 0) {
     return { kind: 'empty' };
   }
-  if (summary.previousMonth === null || !summary.previousMonthHasSpending) {
+  if (summary.previousMonth === null) {
     return { kind: 'current-only', note: null };
+  }
+  if (!summary.previousMonthHasSpending) {
+    return {
+      kind: 'current-only',
+      note: `No spending recorded in ${formatMonth(summary.previousMonth)}.`,
+    };
   }
   return { kind: 'comparison', previousMonth: summary.previousMonth };
 }

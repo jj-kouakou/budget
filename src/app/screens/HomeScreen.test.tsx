@@ -464,6 +464,54 @@ describe('HomeScreen', () => {
         }),
       ).toBeInTheDocument();
     });
+
+    it('names an empty previous month above the single-amount rows', async () => {
+      await addExpense(2000, 'cat_groceries', '2026-11-02');
+
+      render(<HomeScreen ledger={ledger} month="2026-11" />);
+
+      await screen.findByText('Groceries');
+      expect(
+        screen.getByText(
+          `No spending recorded in ${formatMonth('2026-10')}.`,
+        ),
+      ).toBeInTheDocument();
+      expect(document.querySelector('.comparison-header')).toBeNull();
+      expect(document.querySelector('.home-comparison')).toBeNull();
+
+      const row = screen.getByRole('button', { name: /^Groceries, / });
+      expect(row).toBeEnabled();
+      expect(row.textContent).toBe(`Groceries${money(2000)}`);
+    });
+
+    it('shows no note at the lower bound', async () => {
+      await addExpense(500, 'cat_groceries', '0001-01-15');
+
+      render(<HomeScreen ledger={ledger} month={MIN_MONTH} />);
+
+      await screen.findByText('Groceries');
+      expect(
+        screen.getByRole('button', { name: `Groceries, ${money(500)}` }),
+      ).toBeEnabled();
+      expect(screen.queryByText(/^No spending recorded in /)).toBeNull();
+      expect(document.querySelector('.comparison-header')).toBeNull();
+    });
+
+    it('does not render the note in the comparison or empty states', async () => {
+      await addExpense(300, 'cat_health', '2026-10-06');
+      await addExpense(2000, 'cat_groceries', '2026-11-02');
+
+      const comparison = render(
+        <HomeScreen ledger={ledger} month="2026-11" />,
+      );
+      await screen.findByText('Groceries');
+      expect(screen.queryByText(/^No spending recorded in /)).toBeNull();
+      comparison.unmount();
+
+      render(<HomeScreen ledger={ledger} month="2027-03" />);
+      await screen.findByText('No spending yet this month.');
+      expect(screen.queryByText(/^No spending recorded in /)).toBeNull();
+    });
   });
 });
 
