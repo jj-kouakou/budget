@@ -1,8 +1,10 @@
 # Slice 05 Program Design Spec — Compare with last month
 
 - **Gate:** Slice Program Design (workflow step 5).
-- **Status:** designed; not built. Slice 5 branches from `master` after slices 3
-  and 4 merge and deploy.
+- **Status:** built and closed 2026-11-10 on `slice-05` (commits `7462530`,
+  `22e26ae`, `2dfb55a`), reviewed with zero findings. Slices 3 and 4 were
+  merged into `master` first (`faf2a97`); deployment is still pending. The
+  build matched this spec; no divergence was found at close-out.
 - **Sources:** `docs/product/slices/slice-05-scope.md`,
   `docs/architecture/north-star.md`,
   `docs/architecture/slices/slice-05-architecture.md`, ADRs 0001/0005,
