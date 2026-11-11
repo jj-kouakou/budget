@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -6,6 +6,7 @@ import {
   MIN_MONTH,
   formatMonth,
 } from '../../domain/calendar';
+import { formatAmount } from '../../domain/money';
 import type { Account } from '../../domain/types';
 import { BudgetDatabase } from '../../data/db';
 import { createLedger } from '../../data/ledger';
@@ -40,6 +41,10 @@ async function addExpense(
     accountId: checking.id,
     date,
   });
+}
+
+function money(amountMinor: number): string {
+  return formatAmount(amountMinor, 'CAD', 2);
 }
 
 function HomeHarness({ ledger }: { ledger: Ledger }) {
@@ -226,6 +231,239 @@ describe('HomeScreen', () => {
     expect(window.location.hash).toBe(
       '#/category?m=2026-10&c=cat_groceries',
     );
+  });
+
+  describe('comparison', () => {
+    it('renders both month labels and both amounts for every row', async () => {
+      await addExpense(1500, 'cat_groceries', '2026-10-05');
+      await addExpense(300, 'cat_health', '2026-10-06');
+      await addExpense(2000, 'cat_groceries', '2026-11-02');
+      await addExpense(500, 'cat_transport', '2026-11-03');
+
+      render(<HomeScreen ledger={ledger} month="2026-11" />);
+
+      await screen.findByText(formatMonth('2026-10'));
+      const header = document.querySelector('.comparison-header');
+      expect(header?.textContent).toContain(formatMonth('2026-11'));
+      expect(header?.textContent).toContain(formatMonth('2026-10'));
+
+      const groceries = screen.getByRole('button', { name: /^Groceries, / });
+      expect(groceries).toHaveTextContent(money(2000));
+      expect(groceries).toHaveTextContent(money(1500));
+
+      const transport = screen.getByRole('button', { name: /^Transport, / });
+      expect(transport).toHaveTextContent(money(500));
+      expect(transport).toHaveTextContent(money(0));
+
+      const health = screen.getByRole('button', { name: /^Health, / });
+      expect(health).toHaveTextContent(money(0));
+      expect(health).toHaveTextContent(money(300));
+    });
+
+    it('puts previous-only rows last and makes them non-navigating', async () => {
+      await addExpense(300, 'cat_health', '2026-10-06');
+      await addExpense(2000, 'cat_groceries', '2026-11-02');
+      window.location.hash = '#/?m=2026-11';
+
+      render(<HomeHarness ledger={ledger} />);
+
+      const health = await screen.findByRole('button', { name: /^Health, / });
+      const rows = screen.getAllByRole('listitem');
+      expect(rows[0]).toHaveTextContent('Groceries');
+      expect(rows[1]).toHaveTextContent('Health');
+      expect(health).toBeDisabled();
+
+      fireEvent.click(health);
+
+      expect(window.location.hash).toBe('#/?m=2026-11');
+    });
+
+    it('navigates a current row to the displayed month', async () => {
+      const user = userEvent.setup();
+      await addExpense(1500, 'cat_groceries', '2026-10-05');
+      await addExpense(2000, 'cat_groceries', '2026-11-02');
+      window.location.hash = '#/?m=2026-11';
+
+      render(<HomeHarness ledger={ledger} />);
+
+      const row = await screen.findByRole('button', { name: /^Groceries, / });
+      await user.click(row);
+
+      expect(window.location.hash).toBe(
+        '#/category?m=2026-11&c=cat_groceries',
+      );
+    });
+
+    it('renders an empty current month with the previous column and Add expense', async () => {
+      await addExpense(2000, 'cat_groceries', '2026-10-05');
+      await addExpense(500, 'cat_health', '2026-10-06');
+
+      render(<HomeScreen ledger={ledger} month="2026-11" />);
+
+      await screen.findByText('Groceries');
+      expect(screen.getByText('Spent').closest('.spent')).toHaveTextContent(
+        money(0),
+      );
+      const header = document.querySelector('.comparison-header');
+      expect(header?.textContent).toContain(formatMonth('2026-11'));
+      expect(header?.textContent).toContain(formatMonth('2026-10'));
+
+      const groceries = screen.getByRole('button', { name: /^Groceries, / });
+      const health = screen.getByRole('button', { name: /^Health, / });
+      expect(groceries).toBeDisabled();
+      expect(health).toBeDisabled();
+      expect(groceries).toHaveTextContent(money(2000));
+      expect(health).toHaveTextContent(money(500));
+
+      expect(
+        screen.getByRole('button', { name: 'Add expense' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByText('No spending yet this month.'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('keeps the empty state when neither month has spending', async () => {
+      render(<HomeScreen ledger={ledger} month="2026-11" />);
+
+      expect(
+        await screen.findByText('No spending yet this month.'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Add your first expense' }),
+      ).toBeInTheDocument();
+      expect(document.querySelector('.home-comparison')).toBeNull();
+      expect(document.querySelector('.comparison-header')).toBeNull();
+    });
+
+    it('compares January with the previous December', async () => {
+      await addExpense(800, 'cat_groceries', '2026-12-05');
+      await addExpense(500, 'cat_groceries', '2027-01-05');
+
+      render(<HomeScreen ledger={ledger} month="2027-01" />);
+
+      await screen.findByText('Groceries');
+      const header = document.querySelector('.comparison-header');
+      expect(header?.textContent).toContain(formatMonth('2027-01'));
+      expect(header?.textContent).toContain(formatMonth('2026-12'));
+      expect(
+        screen.getByRole('button', {
+          name: `Groceries, ${formatMonth('2027-01')}: ${money(500)}, ${formatMonth('2026-12')}: ${money(800)}`,
+        }),
+      ).toBeInTheDocument();
+    });
+
+    it('names both months and both amounts for enabled and disabled rows', async () => {
+      await addExpense(300, 'cat_health', '2026-10-06');
+      await addExpense(2000, 'cat_groceries', '2026-11-02');
+
+      render(<HomeScreen ledger={ledger} month="2026-11" />);
+
+      await screen.findByText('Groceries');
+      expect(
+        screen.getByRole('button', {
+          name: `Groceries, ${formatMonth('2026-11')}: ${money(2000)}, ${formatMonth('2026-10')}: ${money(0)}`,
+        }),
+      ).toBeEnabled();
+      expect(
+        screen.getByRole('button', {
+          name: `Health, ${formatMonth('2026-11')}: ${money(0)}, ${formatMonth('2026-10')}: ${money(300)}`,
+        }),
+      ).toBeDisabled();
+    });
+
+    it('updates both columns after a rename and keeps an archived category', async () => {
+      await addExpense(1000, 'cat_groceries', '2026-10-05');
+      await addExpense(500, 'cat_groceries', '2026-11-05');
+
+      render(<HomeScreen ledger={ledger} month="2026-11" />);
+
+      await screen.findByRole('button', { name: /^Groceries, / });
+      await ledger.renameCategory('cat_groceries', 'Food');
+
+      await waitFor(() =>
+        expect(
+          screen.queryByRole('button', { name: /^Groceries, / }),
+        ).not.toBeInTheDocument(),
+      );
+      const food = screen.getByRole('button', { name: /^Food, / });
+      expect(food).toHaveTextContent(money(500));
+      expect(food).toHaveTextContent(money(1000));
+
+      await ledger.setCategoryArchived('cat_groceries', true);
+
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: /^Food, / })).toHaveTextContent(
+          money(1000),
+        ),
+      );
+    });
+
+    it('updates both columns after a boundary correction and a removal', async () => {
+      const entry = await ledger.addExpense({
+        amountMinor: 1000,
+        categoryId: 'cat_groceries',
+        accountId: checking.id,
+        date: '2026-11-02',
+      });
+      await addExpense(300, 'cat_health', '2026-10-06');
+
+      render(<HomeScreen ledger={ledger} month="2026-11" />);
+
+      await screen.findByRole('button', { name: /^Groceries, / });
+      await ledger.updateExpense(entry.id, {
+        amountMinor: 700,
+        categoryId: 'cat_transport',
+        accountId: checking.id,
+        date: '2026-10-15',
+      });
+
+      await waitFor(() =>
+        expect(
+          screen.queryByRole('button', { name: /^Groceries, / }),
+        ).not.toBeInTheDocument(),
+      );
+      const transport = screen.getByRole('button', { name: /^Transport, / });
+      expect(transport).toBeDisabled();
+      expect(transport).toHaveTextContent(money(0));
+      expect(transport).toHaveTextContent(money(700));
+      expect(screen.getByRole('button', { name: /^Health, / })).toHaveTextContent(
+        money(300),
+      );
+
+      await ledger.deleteExpense(entry.id);
+
+      await waitFor(() =>
+        expect(
+          screen.queryByRole('button', { name: /^Transport, / }),
+        ).not.toBeInTheDocument(),
+      );
+      expect(
+        screen.getByRole('button', { name: /^Health, / }),
+      ).toBeInTheDocument();
+    });
+
+    it('moves the comparison with month navigation', async () => {
+      const user = userEvent.setup();
+      await addExpense(700, 'cat_groceries', '2026-09-05');
+      await addExpense(1000, 'cat_groceries', '2026-10-05');
+      await addExpense(500, 'cat_groceries', '2026-11-05');
+      window.location.hash = '#/?m=2026-11';
+
+      render(<HomeHarness ledger={ledger} />);
+
+      await screen.findByRole('button', {
+        name: `Groceries, ${formatMonth('2026-11')}: ${money(500)}, ${formatMonth('2026-10')}: ${money(1000)}`,
+      });
+      await user.click(screen.getByRole('button', { name: 'Previous month' }));
+
+      await screen.findByRole('heading', { name: formatMonth('2026-10') });
+      expect(
+        await screen.findByRole('button', {
+          name: `Groceries, ${formatMonth('2026-10')}: ${money(1000)}, ${formatMonth('2026-09')}: ${money(700)}`,
+        }),
+      ).toBeInTheDocument();
+    });
   });
 });
 

@@ -310,3 +310,50 @@ select {
     border-bottom-color: #334155;
   }
 }
+
+.home-comparison {
+  --amount-column: 5.75rem;
+}
+
+.comparison-note {
+  margin: 0 0 1rem;
+  color: #475569;
+}
+
+.home-comparison .comparison-header,
+.home-comparison .category-list li button {
+  display: grid;
+  grid-template-columns:
+    minmax(0, 1fr) var(--amount-column) var(--amount-column);
+  column-gap: 0.5rem;
+  align-items: baseline;
+}
+
+.home-comparison .comparison-header {
+  padding: 0 0 0.35rem;
+  font-size: 0.75rem;
+  color: #475569;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.home-comparison .comparison-header span:first-child {
+  text-align: left;
+}
+
+.home-comparison .comparison-amount {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.home-comparison .comparison-name {
+  overflow-wrap: anywhere;
+}
+
+@media (prefers-color-scheme: dark) {
+  .home-comparison .comparison-header,
+  .comparison-note {
+    color: #94a3b8;
+  }
+}
