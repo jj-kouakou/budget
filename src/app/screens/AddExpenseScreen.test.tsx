@@ -198,12 +198,79 @@ describe('AddExpenseScreen', () => {
     expect(await db.entries.count()).toBe(0);
   });
 
-  it('keeps an archived category selectable', async () => {
+  it('does not offer an archived category but still offers active ones', async () => {
     await db.categories.update('cat_groceries', { archived: true });
     await renderForm();
 
     expect(
-      screen.getByRole('button', { name: 'Groceries' }),
+      screen.queryByRole('button', { name: 'Groceries' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Eating out' }),
     ).toBeInTheDocument();
+  });
+
+  it('points to Categories instead of a form when every category is archived', async () => {
+    const user = userEvent.setup();
+    await db.categories.toCollection().modify({ archived: true });
+    render(<AddExpenseScreen ledger={ledger} />);
+
+    expect(
+      await screen.findByText(
+        'There is no category to file this expense under. Add or unarchive one in Categories.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText('Amount')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('group', { name: 'Category' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('group', { name: 'Account' }),
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Categories' }));
+
+    expect(window.location.hash).toBe('#/categories');
+  });
+
+  it('shows the same pointer state when the ledger has no categories', async () => {
+    const user = userEvent.setup();
+    await db.categories.clear();
+    render(<AddExpenseScreen ledger={ledger} />);
+
+    expect(
+      await screen.findByText(
+        'There is no category to file this expense under. Add or unarchive one in Categories.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText('Amount')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Categories' }));
+
+    expect(window.location.hash).toBe('#/categories');
+  });
+
+  it('maps a category archived after render to the archived error', async () => {
+    const user = userEvent.setup();
+    await renderForm();
+    await user.type(screen.getByLabelText('Amount'), '10');
+    await selectCategory('Groceries');
+
+    await db.categories.update('cat_groceries', { archived: true });
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('button', { name: 'Groceries' }),
+      ).not.toBeInTheDocument(),
+    );
+    fireEvent.submit(
+      screen.getByRole('button', { name: 'Save' }).closest(
+        'form',
+      ) as HTMLFormElement,
+    );
+
+    expect(
+      await screen.findByText('That category is archived. Choose another.'),
+    ).toBeInTheDocument();
+    expect(await db.entries.count()).toBe(0);
   });
 });

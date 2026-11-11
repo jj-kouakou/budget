@@ -41,11 +41,25 @@ export function AddExpenseScreen({ ledger }: { ledger: Ledger }) {
     );
   }
 
-  if (categories.length === 0) {
+  const activeCategories = categories.filter(
+    (category) => !category.archived,
+  );
+
+  if (activeCategories.length === 0) {
     return (
       <section>
         <h1>Add expense</h1>
-        <p>No categories are available.</p>
+        <p>
+          There is no category to file this expense under. Add or unarchive
+          one in Categories.
+        </p>
+        <button
+          type="button"
+          className="button-primary"
+          onClick={() => navigate({ name: 'categories' })}
+        >
+          Categories
+        </button>
       </section>
     );
   }
@@ -54,7 +68,7 @@ export function AddExpenseScreen({ ledger }: { ledger: Ledger }) {
     <AddExpenseForm
       ledger={ledger}
       accounts={accounts}
-      categories={categories}
+      categories={activeCategories}
       settings={settings}
     />
   );

@@ -22,6 +22,8 @@ export function expenseFieldErrors(
       return { account: 'That account no longer exists. Choose another.' };
     case 'unknown-category':
       return { category: 'That category no longer exists. Choose another.' };
+    case 'archived-category':
+      return { category: 'That category is archived. Choose another.' };
     default:
       return null;
   }
