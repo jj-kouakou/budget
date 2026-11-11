@@ -12,9 +12,9 @@ The app replaces the spreadsheet that gets abandoned in week three.
 |---|---|---|---|
 | 1 | Log spending and see this month by category | Set up the accounts they spend from; add an expense in under ten seconds; see this month's total and category breakdown; move between months; install the app on the phone and use it without a connection. | Done — deployed at https://jj-kouakou.github.io/budget/ |
 | 2 | Inspect and correct entries | Tap a category to see the entries behind it; fix or remove a mistaken entry. | Done — deployed at https://jj-kouakou.github.io/budget/ |
-| 3 | Keep a backup | Export the ledger to a file and restore it; see when the last backup was made and whether the phone might discard the data. | Done — 2026-11-10 on branch `slice-03`; not yet deployed |
-| 4 | Manage categories | Add, rename, archive, and unarchive categories so the breakdown matches how they think about their money. | Done — 2026-11-10 on branch `slice-04`; not yet deployed |
-| 5 | Compare with last month | See last month's category totals beside this month's. | Done — 2026-11-10 on branch `slice-05`; not yet merged or deployed |
+| 3 | Keep a backup | Export the ledger to a file and restore it; see when the last backup was made and whether the phone might discard the data. | Done — deployed 2026-11-11 at https://jj-kouakou.github.io/budget/ |
+| 4 | Manage categories | Add, rename, archive, and unarchive categories so the breakdown matches how they think about their money. | Done — deployed 2026-11-11 at https://jj-kouakou.github.io/budget/ |
+| 5 | Compare with last month | See last month's category totals beside this month's. | Done — deployed 2026-11-11 at https://jj-kouakou.github.io/budget/ |
 | 6 | Track account balances | Enter opening balances and see what each account holds or owes. | Backlog |
 | 7 | Record income | Record money coming in, categorized, without inflating spending. | Backlog |
 | 8 | Record transfers | Move money between their own accounts, including paying a credit card, without counting it as spending. | Backlog |
@@ -75,12 +75,10 @@ The app replaces the spreadsheet that gets abandoned in week three.
   in the build, which is exactly what slice 6 needs when it reads the same
   entries per account. Slice 6 remains next because balances are the first
   supporting concept the vision names and it depends only on accounts and
-  entries, both already built. Two release facts carry forward: slices 3 and 4
-  are merged into local `master`, slice 5 is not yet merged, and the deployed
-  site is still slice 2, so merge and deploy slices 3–5 before shipping slice
-  6; and slice 5's comparison cannot be validated against real data until
-  December 2026 at the earliest. Neither changes the order — the merge and
-  deploy are release steps, not a reordering.
+  entries, both already built. The release step is done: slices 3–5 were
+  merged into `master` and deployed on 2026-11-11. The remaining fact is that
+  slice 5's comparison cannot be validated against real data until December
+  2026 at the earliest; that does not change the order.
 - **The last-month comparison completes the headline, but it needs a month of
   data to mean anything.** It follows the trust-and-safety slices so the user
   has a reason to keep logging until there is a last month to compare.

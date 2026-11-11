@@ -14,12 +14,13 @@ handoff.
 |---|---|---|
 | `slice-05` | `2dfb55a` | ticket 3 implementation |
 | `slice-05` | `2ddd8bd` | build and review handoff |
-| `slice-05` | this close-out commit | status lines, acceptance reconciliation, backlog, this handoff |
-| `master` | `faf2a97` | merge of `slice-04` (also contains slices 3 and the slice-05 gate docs); ahead of `origin/master` by 24 commits, not pushed |
+| `slice-05` | `1b6a78f` | status lines, acceptance reconciliation, backlog, this handoff |
+| `master` | `128a45f` | `--no-ff` merge of `slice-05`; pushed to `origin/master` and deployed 2026-11-11 |
 
-`slice-05` was cut from `faf2a97`. The slice-05 code is **not yet merged into
-`master`**; only the gate docs and slice 4 are. The deployed site is still
-slice 2.
+`slice-05` was cut from `faf2a97`. It is merged into `master` at `128a45f`, and
+both `master` and `slice-05` are pushed. GitHub Pages deployed `128a45f` on
+2026-11-11 (run `42948844275`, build and deploy both green); the live site now
+serves slices 1–5 at https://jj-kouakou.github.io/budget/.
 
 ## 1. Tests
 
@@ -162,8 +163,20 @@ noted.
   the file and the UI correctly reported "Your browser has taken the file. It
   is a backup only if you saved it." (`unconfirmed`). The file was read back
   and restored successfully.
-- Deployment. Slices 3 and 4 are merged only into local `master`; slice 5 is
-  not merged yet.
+
+## Deployment verification
+
+- `master` pushed (`a0ff254..128a45f`); GitHub Actions "Deploy to GitHub
+  Pages" run `42948844275` completed with build and deploy green.
+- Live site returns `200`; the served bundle is `assets/index-l9AyPxgF.js`,
+  byte-identical hash to the local production build, and contains the
+  comparison copy.
+- Headless Chromium against https://jj-kouakou.github.io/budget/: the app
+  loads and renders the new previous-empty note from existing ledger data; the
+  service worker is `activated` and controlling; `Page.getInstallabilityErrors`
+  returns none.
+- Deployment noise: the workflow logs a Node 20 deprecation annotation for the
+  pinned action versions; it did not fail the run.
 
 ## Known notes, not defects
 
@@ -179,6 +192,7 @@ noted.
 
 ## Next
 
-1. Merge `slice-05` into `master` and deploy slices 3–5 (release step).
-2. Pull slice 6 — Track account balances — in a fresh architecture session.
-3. Keep the December 2026 real-data check for the comparison on the list.
+1. Pull slice 6 — Track account balances — in a fresh architecture session.
+2. Keep the December 2026 real-data check for the comparison on the list.
+3. When convenient, clear the Node 20 deprecation annotation by bumping the
+   pinned action versions; it does not affect the deploy.

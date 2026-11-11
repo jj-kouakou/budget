@@ -6,9 +6,9 @@ immediately before it, so the user can read the change without doing the
 subtraction.
 
 **Status:** built and closed 2026-11-10 on `slice-05` (commits `7462530`,
-`22e26ae`, `2dfb55a`; head `2dfb55a`), reviewed with zero findings. Slice 3 and
-slice 4 were merged into `master` first (`faf2a97`); deployment is still
-pending. The build matched this design, so no part of it changed at close-out.
+`22e26ae`, `2dfb55a`; head `2dfb55a`), reviewed with zero findings, merged into
+`master` (`128a45f`) and deployed on 2026-11-11. The build matched this design,
+so no part of it changed at close-out.
 
 Extends `docs/architecture/north-star.md`,
 `docs/architecture/slices/slice-01-architecture.md`,

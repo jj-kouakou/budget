@@ -6,10 +6,12 @@
   `docs/product/slices/slice-05-scope.md`, ADRs 0001/0005, `CONTEXT.md`.
 - **Branch:** `slice-05`, cut at `faf2a97` after slices 3 and 4 merged into
   `master`. Deploying slices 3 and 4 did **not** happen first; the merge half
-  of boundary decision 6 was done and the deploy half is still open.
-- **Status:** completed 2026-11-10. Boundary decisions 1 and 6 were confirmed
-  by the user before the build; the rest are recorded so the build does not
-  re-litigate them. Tickets 1–3 are implemented, tested, and reviewed.
+  of boundary decision 6 was done then, and the deploy half completed later:
+  merged into `master` as `128a45f` and deployed 2026-11-11.
+- **Status:** completed and deployed 2026-11-11. Boundary decisions 1 and 6
+  were confirmed by the user before the build; the rest are recorded so the
+  build does not re-litigate them. Tickets 1–3 are implemented, tested,
+  reviewed, merged, and live.
 
 Each ticket is one build session, test-first, and one commit when its tests
 pass. Every ticket leaves the suite green and the home screen correct for the
@@ -103,9 +105,10 @@ dependency, not the test numbering.
    on the current branch. **Build deviation, recorded:** `master` already held
    slice 3 but not slice 4, so the slice-05 docs were committed on `slice-04`,
    `slice-04` was merged into `master` with `--no-ff` (`faf2a97`), and
-   `slice-05` was cut from that merge. Deployment was not performed; slices
-   3 and 4 are merged locally, slice 5 is not yet merged, and the deployed
-   site is still slice 2.
+   `slice-05` was cut from that merge. Deployment was not performed at that
+   point; slices 3 and 4 were merged locally while the deployed site was still
+   slice 2. All of slices 3–5 were merged into `master` as `128a45f` and
+   deployed on 2026-11-11.
 7. **Decided — no backup, offline, or glossary ticket.** The comparison is
    never serialized and `CONTEXT.md` gains no term (Spec §11). Backup/restore
    and offline are manual acceptance checks in ticket 3 and the slice
@@ -401,6 +404,6 @@ plain line and keeps the current month's single amount per row. At
       architecture, spec, tickets, and handoffs all live in folders it already
       lists.
 - [x] `docs/product/backlog.md` marks slice 5 complete and confirms slice 6
-      (account balances) as the next slice to pull, with deployment of slices
-      3–5 as the outstanding release step.
+      (account balances) as the next slice to pull. Slices 3–5 were merged into
+      `master` and deployed on 2026-11-11.
 - [x] Slice handoff written to `docs/agents/slice-05-closeout-handoff.md`.
