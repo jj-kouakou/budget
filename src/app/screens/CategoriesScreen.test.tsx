@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { monthOf, todayLocalDate } from '../../domain/calendar';
@@ -6,6 +6,8 @@ import { BudgetDatabase } from '../../data/db';
 import { createLedger } from '../../data/ledger';
 import { AddExpenseScreen } from './AddExpenseScreen';
 import { CategoriesScreen } from './CategoriesScreen';
+import { CategoryEntriesScreen } from './CategoryEntriesScreen';
+import { HomeScreen } from './HomeScreen';
 
 let db: BudgetDatabase;
 
@@ -142,4 +144,213 @@ describe('CategoriesScreen', () => {
       expect(window.location.hash).toBe(`#/?m=${monthOf(todayLocalDate())}`),
     );
   });
+
+  it('renames an active category and propagates it to past-month reads', async () => {
+    const user = userEvent.setup();
+    const ledger = createLedger(db);
+    const account = await ledger.addAccount({
+      name: 'Checking',
+      type: 'checking',
+    });
+    await ledger.addExpense({
+      amountMinor: 1234,
+      categoryId: 'cat_groceries',
+      accountId: account.id,
+      date: '2026-10-14',
+    });
+    const view = await renderScreen();
+
+    const row = rowFor('Groceries');
+    await user.click(within(row).getByRole('button', { name: 'Rename' }));
+    const input = within(row).getByLabelText('Rename Groceries');
+    await user.clear(input);
+    await user.type(input, 'Food');
+    await user.click(within(row).getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(rowFor('Food')).toBeInTheDocument());
+
+    view.unmount();
+    render(<HomeScreen ledger={ledger} month="2026-10" />);
+    const homeRow = await screen.findByRole('listitem');
+    expect(homeRow).toHaveTextContent('Food');
+    expect(homeRow).toHaveTextContent('12.34');
+
+    cleanup();
+    render(
+      <CategoryEntriesScreen
+        ledger={ledger}
+        month="2026-10"
+        categoryId="cat_groceries"
+      />,
+    );
+    expect(
+      await screen.findByRole('heading', { name: 'Food · October 2026' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Spent').closest('.spent')).toHaveTextContent(
+      '12.34',
+    );
+  });
+
+  it('renames an archived category from the Archived group', async () => {
+    const user = userEvent.setup();
+    await db.categories.update('cat_fun', { archived: true });
+    await renderScreen();
+
+    const row = rowFor('Fun');
+    await user.click(within(row).getByRole('button', { name: 'Rename' }));
+    const input = within(row).getByLabelText('Rename Fun');
+    await user.clear(input);
+    await user.type(input, 'Leisure');
+    await user.click(within(row).getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => {
+      const renamed = rowFor('Leisure');
+      expect(within(renamed).getByText('Archived')).toBeInTheDocument();
+    });
+  });
+
+  it('shows the duplicate copy and keeps the old name', async () => {
+    const user = userEvent.setup();
+    await renderScreen();
+
+    const row = rowFor('Groceries');
+    await user.click(within(row).getByRole('button', { name: 'Rename' }));
+    const input = within(row).getByLabelText('Rename Groceries');
+    await user.clear(input);
+    await user.type(input, 'Transport');
+    await user.click(within(row).getByRole('button', { name: 'Save' }));
+
+    expect(
+      await screen.findByText(
+        'A category named “Transport” already exists.',
+      ),
+    ).toBeInTheDocument();
+    expect((await db.categories.get('cat_groceries'))?.name).toBe('Groceries');
+
+    await user.click(within(row).getByRole('button', { name: 'Cancel' }));
+    expect(rowFor('Groceries')).toBeInTheDocument();
+  });
+
+  it('renames to its own name with different capitalisation', async () => {
+    const user = userEvent.setup();
+    await renderScreen();
+
+    const row = rowFor('Groceries');
+    await user.click(within(row).getByRole('button', { name: 'Rename' }));
+    const input = within(row).getByLabelText('Rename Groceries');
+    await user.clear(input);
+    await user.type(input, 'GROCERIES');
+    await user.click(within(row).getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(rowFor('GROCERIES')).toBeInTheDocument());
+  });
+
+  it('discards the draft on Cancel and Escape', async () => {
+    const user = userEvent.setup();
+    await renderScreen();
+
+    let row = rowFor('Groceries');
+    await user.click(within(row).getByRole('button', { name: 'Rename' }));
+    let input = within(row).getByLabelText('Rename Groceries');
+    await user.clear(input);
+    await user.type(input, 'Nope');
+    await user.click(within(row).getByRole('button', { name: 'Cancel' }));
+    expect(rowFor('Groceries')).toBeInTheDocument();
+
+    row = rowFor('Groceries');
+    await user.click(within(row).getByRole('button', { name: 'Rename' }));
+    input = within(row).getByLabelText('Rename Groceries');
+    await user.clear(input);
+    await user.type(input, 'Nope{Escape}');
+    expect(rowFor('Groceries')).toBeInTheDocument();
+    expect(screen.queryByDisplayValue('Nope')).not.toBeInTheDocument();
+  });
+
+  it('reports a stale row as unknown and keeps the form', async () => {
+    const user = userEvent.setup();
+    await renderScreen();
+
+    const row = rowFor('Groceries');
+    await user.click(within(row).getByRole('button', { name: 'Rename' }));
+    await db.categories.delete('cat_groceries');
+
+    const staleLabel = await screen.findByText('Rename Groceries', {
+      selector: 'label',
+    });
+    const staleForm = staleLabel.closest('form') as HTMLFormElement;
+    await user.click(within(staleForm).getByRole('button', { name: 'Save' }));
+
+    expect(
+      await screen.findByText('That category no longer exists.'),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText('Rename Groceries')).toBeInTheDocument();
+  });
+
+  it('archives and unarchives without touching history or totals', async () => {
+    const user = userEvent.setup();
+    const ledger = createLedger(db);
+    const account = await ledger.addAccount({
+      name: 'Checking',
+      type: 'checking',
+    });
+    await ledger.addExpense({
+      amountMinor: 1234,
+      categoryId: 'cat_groceries',
+      accountId: account.id,
+      date: '2026-10-14',
+    });
+    const view = await renderScreen();
+
+    let row = rowFor('Groceries');
+    await user.click(within(row).getByRole('button', { name: 'Archive' }));
+
+    await waitFor(() => {
+      row = rowFor('Groceries');
+      expect(within(row).getByText('Archived')).toBeInTheDocument();
+    });
+    expect(
+      within(row).getByRole('button', { name: 'Unarchive' }),
+    ).toBeInTheDocument();
+
+    view.unmount();
+    render(<HomeScreen ledger={ledger} month="2026-10" />);
+    expect(await screen.findByRole('listitem')).toHaveTextContent('12.34');
+
+    cleanup();
+    render(
+      <CategoryEntriesScreen
+        ledger={ledger}
+        month="2026-10"
+        categoryId="cat_groceries"
+      />,
+    );
+    expect(
+      await screen.findByRole('heading', { name: 'Groceries · October 2026' }),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByRole('button', { name: /12\.34/ }),
+    ).toBeInTheDocument();
+
+    cleanup();
+    await renderScreen();
+    row = rowFor('Groceries');
+    await user.click(within(row).getByRole('button', { name: 'Unarchive' }));
+
+    await waitFor(() => {
+      const restored = rowFor('Groceries');
+      expect(
+        within(restored).queryByText('Archived'),
+      ).not.toBeInTheDocument();
+    });
+    const summary = await ledger.monthSummary('2026-10');
+    expect(summary.totalMinor).toBe(1234);
+    const entries = await ledger.categoryEntries('2026-10', 'cat_groceries');
+    expect(entries.rows).toHaveLength(1);
+    expect(entries.totalMinor).toBe(1234);
+  });
 });
+
+function rowFor(name: string): HTMLElement {
+  const cell = screen.getByText(name, { selector: '.category-name' });
+  return cell.closest('li') as HTMLElement;
+}
