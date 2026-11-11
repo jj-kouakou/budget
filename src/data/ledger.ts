@@ -65,7 +65,9 @@ export type LedgerErrorCode =
   | 'unknown-account'
   | 'unknown-category'
   | 'unknown-entry'
-  | 'unsupported-entry-kind';
+  | 'unsupported-entry-kind'
+  | 'duplicate-category-name'
+  | 'archived-category';
 
 export class LedgerError extends Error {
   readonly name = 'LedgerError';
@@ -73,6 +75,7 @@ export class LedgerError extends Error {
   constructor(
     readonly code: LedgerErrorCode,
     message: string,
+    readonly existingCategoryName?: string,
   ) {
     super(message);
   }
@@ -84,6 +87,9 @@ export interface Ledger {
   addAccount(input: AddAccountInput): Promise<Account>;
   renameAccount(id: string, name: string): Promise<void>;
   listCategories(): Promise<Category[]>;
+  addCategory(name: string): Promise<Category>;
+  renameCategory(id: string, name: string): Promise<void>;
+  setCategoryArchived(id: string, archived: boolean): Promise<void>;
   addExpense(input: ExpenseInput): Promise<Entry>;
   updateExpense(id: string, input: ExpenseInput): Promise<Entry>;
   deleteExpense(id: string): Promise<Entry>;
@@ -100,6 +106,7 @@ export interface Ledger {
 }
 
 const MAX_ACCOUNT_NAME_LENGTH = 60;
+const MAX_CATEGORY_NAME_LENGTH = 60;
 
 function requireAccountName(name: string): string {
   const trimmed = name.trim();
@@ -112,7 +119,41 @@ function requireAccountName(name: string): string {
   return trimmed;
 }
 
+function requireCategoryName(name: string): string {
+  const trimmed = name.trim();
+  if (trimmed.length === 0 || trimmed.length > MAX_CATEGORY_NAME_LENGTH) {
+    throw new LedgerError(
+      'invalid-name',
+      'Enter a category name of 60 characters or fewer.',
+    );
+  }
+  return trimmed;
+}
+
+function categoryNameKey(name: string): string {
+  return name.trim().toLowerCase();
+}
+
 export function createLedger(db: BudgetDatabase): Ledger {
+  async function requireUniqueCategoryName(
+    name: string,
+    exceptId?: string,
+  ): Promise<void> {
+    const categories = await db.categories.toArray();
+    const key = categoryNameKey(name);
+    const existing = categories.find(
+      (category) =>
+        category.id !== exceptId && categoryNameKey(category.name) === key,
+    );
+    if (existing) {
+      throw new LedgerError(
+        'duplicate-category-name',
+        `A category named “${existing.name}” already exists.`,
+        existing.name,
+      );
+    }
+  }
+
   async function requireExpenseFields(input: ExpenseInput): Promise<void> {
     if (!Number.isSafeInteger(input.amountMinor) || input.amountMinor <= 0) {
       throw new LedgerError(
@@ -211,9 +252,55 @@ export function createLedger(db: BudgetDatabase): Ledger {
       const categories = await db.categories.toArray();
       return categories.sort(
         (left, right) =>
+          Number(left.archived) - Number(right.archived) ||
           left.name.localeCompare(right.name) ||
           left.id.localeCompare(right.id),
       );
+    },
+
+    async addCategory(name) {
+      return db.transaction('rw', db.categories, async () => {
+        const trimmed = requireCategoryName(name);
+        await requireUniqueCategoryName(trimmed);
+        const category: Category = {
+          id: crypto.randomUUID(),
+          name: trimmed,
+          archived: false,
+        };
+        await db.categories.add(category);
+        return category;
+      });
+    },
+
+    async renameCategory(id, name) {
+      await db.transaction('rw', db.categories, async () => {
+        const row = await db.categories.get(id);
+        if (!row) {
+          throw new LedgerError(
+            'unknown-category',
+            'That category no longer exists.',
+          );
+        }
+        const trimmed = requireCategoryName(name);
+        await requireUniqueCategoryName(trimmed, id);
+        await db.categories.update(id, { name: trimmed });
+      });
+    },
+
+    async setCategoryArchived(id, archived) {
+      await db.transaction('rw', db.categories, async () => {
+        const row = await db.categories.get(id);
+        if (!row) {
+          throw new LedgerError(
+            'unknown-category',
+            'That category no longer exists.',
+          );
+        }
+        if (row.archived === archived) {
+          return;
+        }
+        await db.categories.update(id, { archived });
+      });
     },
 
     async addExpense(input) {

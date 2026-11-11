@@ -272,6 +272,233 @@ describe('accounts', () => {
   });
 });
 
+describe('category writes', () => {
+  async function setup() {
+    const db = openDatabase();
+    const ledger = createLedger(db);
+    await ledger.initialize();
+    return { db, ledger };
+  }
+
+  it('adds a trimmed active category and lists the stored row', async () => {
+    const { ledger } = await setup();
+
+    const category = await ledger.addCategory('  Coffee  ');
+
+    expect(category).toMatchObject({ name: 'Coffee', archived: false });
+    expect(category.id).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    );
+    expect(await ledger.listCategories()).toContainEqual(category);
+  });
+
+  it.each(['', '   ', 'a'.repeat(61)])(
+    'rejects an invalid category name %j',
+    async (name) => {
+      const { ledger } = await setup();
+
+      const error = await ledger
+        .addCategory(name)
+        .catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(LedgerError);
+      expect(error).toMatchObject({ code: 'invalid-name' });
+    },
+  );
+
+  it('accepts a 60-character category name', async () => {
+    const { ledger } = await setup();
+
+    const category = await ledger.addCategory('a'.repeat(60));
+
+    expect(category.name).toHaveLength(60);
+  });
+
+  it('refuses a duplicate name ignoring case and spaces, naming the stored category', async () => {
+    const { db, ledger } = await setup();
+
+    const error = await ledger
+      .addCategory(' groceries ')
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(LedgerError);
+    expect(error).toMatchObject({
+      code: 'duplicate-category-name',
+      existingCategoryName: 'Groceries',
+    });
+    expect(await db.categories.count()).toBe(9);
+  });
+
+  it('refuses a duplicate name held by an archived category', async () => {
+    const { db, ledger } = await setup();
+    await db.categories.update('cat_groceries', { archived: true });
+
+    const error = await ledger
+      .addCategory('GROCERIES')
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(LedgerError);
+    expect(error).toMatchObject({
+      code: 'duplicate-category-name',
+      existingCategoryName: 'Groceries',
+    });
+  });
+
+  it('renames a category, trimming the name', async () => {
+    const { db, ledger } = await setup();
+
+    await ledger.renameCategory('cat_groceries', '  Food  ');
+
+    expect(await db.categories.get('cat_groceries')).toEqual({
+      id: 'cat_groceries',
+      name: 'Food',
+      archived: false,
+    });
+  });
+
+  it('allows renaming a category to its own name with different capitalisation', async () => {
+    const { db, ledger } = await setup();
+
+    await ledger.renameCategory('cat_groceries', 'GROCERIES');
+
+    expect((await db.categories.get('cat_groceries'))?.name).toBe('GROCERIES');
+  });
+
+  it('refuses renaming to another category name', async () => {
+    const { db, ledger } = await setup();
+
+    const error = await ledger
+      .renameCategory('cat_groceries', 'Transport')
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(LedgerError);
+    expect(error).toMatchObject({
+      code: 'duplicate-category-name',
+      existingCategoryName: 'Transport',
+    });
+    expect((await db.categories.get('cat_groceries'))?.name).toBe('Groceries');
+  });
+
+  it('refuses renaming an unknown category', async () => {
+    const { ledger } = await setup();
+
+    const error = await ledger
+      .renameCategory('cat_missing', 'Food')
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(LedgerError);
+    expect(error).toMatchObject({ code: 'unknown-category' });
+  });
+
+  it('propagates a rename to a past month without changing totals or entries', async () => {
+    const { db, ledger } = await setup();
+    const account = await ledger.addAccount({
+      name: 'Checking',
+      type: 'checking',
+    });
+    const entry = await ledger.addExpense({
+      amountMinor: 1234,
+      categoryId: 'cat_groceries',
+      accountId: account.id,
+      date: '2026-10-14',
+    });
+
+    await ledger.renameCategory('cat_groceries', 'Food');
+
+    expect(await db.entries.get(entry.id)).toEqual(entry);
+    const summary = await ledger.monthSummary('2026-10');
+    expect(summary.totalMinor).toBe(1234);
+    expect(summary.rows).toEqual([
+      { categoryId: 'cat_groceries', name: 'Food', amountMinor: 1234 },
+    ]);
+    const entries = await ledger.categoryEntries('2026-10', 'cat_groceries');
+    expect(entries.categoryName).toBe('Food');
+    expect(entries.totalMinor).toBe(1234);
+  });
+
+  it('archives and unarchives idempotently', async () => {
+    const { db, ledger } = await setup();
+
+    await ledger.setCategoryArchived('cat_fun', true);
+    expect((await db.categories.get('cat_fun'))?.archived).toBe(true);
+
+    await ledger.setCategoryArchived('cat_fun', true);
+    expect(await db.categories.get('cat_fun')).toEqual({
+      id: 'cat_fun',
+      name: 'Fun',
+      archived: true,
+    });
+
+    await ledger.setCategoryArchived('cat_fun', false);
+    expect((await db.categories.get('cat_fun'))?.archived).toBe(false);
+  });
+
+  it('allows archiving every seed category', async () => {
+    const { ledger } = await setup();
+
+    for (const category of await ledger.listCategories()) {
+      await ledger.setCategoryArchived(category.id, true);
+    }
+
+    expect(
+      (await ledger.listCategories()).every((category) => category.archived),
+    ).toBe(true);
+  });
+
+  it('refuses archiving an unknown category', async () => {
+    const { ledger } = await setup();
+
+    const error = await ledger
+      .setCategoryArchived('cat_missing', true)
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(LedgerError);
+    expect(error).toMatchObject({ code: 'unknown-category' });
+  });
+
+  it('round-trips added, renamed, and archived categories through backup data', async () => {
+    const { ledger } = await setup();
+    const older = await ledger.readBackupData();
+
+    await ledger.addCategory('Coffee');
+    await ledger.renameCategory('cat_groceries', 'Dining');
+    await ledger.setCategoryArchived('cat_fun', true);
+    const newer = await ledger.readBackupData();
+
+    const secondDb = openDatabase();
+    const second = createLedger(secondDb);
+    await second.initialize();
+
+    await second.restoreBackup(newer);
+    const restored = await second.listCategories();
+    const byId = (left: { id: string }, right: { id: string }) =>
+      left.id.localeCompare(right.id);
+    expect([...restored].sort(byId)).toEqual([...newer.categories].sort(byId));
+    expect(restored.some((category) => category.name === 'Coffee')).toBe(true);
+    expect(
+      restored.find((category) => category.id === 'cat_groceries'),
+    ).toMatchObject({ name: 'Dining', archived: false });
+    expect(
+      restored.find((category) => category.id === 'cat_fun'),
+    ).toMatchObject({ archived: true });
+
+    await second.restoreBackup(older);
+    const restoredOlder = await second.listCategories();
+    expect(restoredOlder.some((category) => category.name === 'Coffee')).toBe(
+      false,
+    );
+    expect(
+      restoredOlder.find((category) => category.id === 'cat_groceries')?.name,
+    ).toBe('Groceries');
+    expect(
+      restoredOlder.find((category) => category.id === 'cat_fun')?.archived,
+    ).toBe(false);
+    expect([...restoredOlder].sort(byId)).toEqual(
+      [...older.categories].sort(byId),
+    );
+  });
+});
+
 describe('addExpense', () => {
   async function setup() {
     const db = openDatabase();
@@ -640,14 +867,13 @@ describe('monthSummary', () => {
 });
 
 describe('categories and settings reads', () => {
-  it('lists categories by name then id, including archived rows', async () => {
+  it('lists active categories before archived, alphabetical within each group', async () => {
     const db = openDatabase();
     const ledger = createLedger(db);
     await ledger.initialize();
     await db.categories.add({ id: 'cat_aaa', name: 'Bills', archived: true });
 
     expect((await ledger.listCategories()).map((category) => category.id)).toEqual([
-      'cat_aaa',
       'cat_bills',
       'cat_eating_out',
       'cat_fun',
@@ -657,7 +883,24 @@ describe('categories and settings reads', () => {
       'cat_other',
       'cat_shopping',
       'cat_transport',
+      'cat_aaa',
     ]);
+  });
+
+  it('breaks same-name ties by id inside a group', async () => {
+    const db = openDatabase();
+    const ledger = createLedger(db);
+    await ledger.initialize();
+    await db.categories.bulkAdd([
+      { id: 'cat_z_same', name: 'Same', archived: false },
+      { id: 'cat_a_same', name: 'Same', archived: false },
+    ]);
+
+    const sameIds = (await ledger.listCategories())
+      .filter((category) => category.name === 'Same')
+      .map((category) => category.id);
+
+    expect(sameIds).toEqual(['cat_a_same', 'cat_z_same']);
   });
 
   it('returns the seeded settings row', async () => {
