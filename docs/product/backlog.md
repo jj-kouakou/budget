@@ -13,7 +13,7 @@ The app replaces the spreadsheet that gets abandoned in week three.
 | 1 | Log spending and see this month by category | Set up the accounts they spend from; add an expense in under ten seconds; see this month's total and category breakdown; move between months; install the app on the phone and use it without a connection. | Done — deployed at https://jj-kouakou.github.io/budget/ |
 | 2 | Inspect and correct entries | Tap a category to see the entries behind it; fix or remove a mistaken entry. | Done — deployed at https://jj-kouakou.github.io/budget/ |
 | 3 | Keep a backup | Export the ledger to a file and restore it; see when the last backup was made and whether the phone might discard the data. | Done — 2026-11-10 on branch `slice-03`; not yet deployed |
-| 4 | Manage categories | Add, rename, and archive categories so the breakdown matches how they think about their money. | Backlog |
+| 4 | Manage categories | Add, rename, archive, and unarchive categories so the breakdown matches how they think about their money. | In progress |
 | 5 | Compare with last month | See last month's category totals beside this month's. | Backlog |
 | 6 | Track account balances | Enter opening balances and see what each account holds or owes. | Backlog |
 | 7 | Record income | Record money coming in, categorized, without inflating spending. | Backlog |
@@ -29,15 +29,19 @@ The app replaces the spreadsheet that gets abandoned in week three.
   loss, not accuracy: backup protects a history that now survives correction.
   Close-out on 2026-11-04 re-checked the order and found nothing in slice 2
   that changes it.
-- **Slice 3 was completed on 2026-11-10; slice 4 is still next.** Close-out
-  re-checked the order. The backup file is ledger-only and the data model did
-  not change (`SCHEMA_VERSION` and `BACKUP_SCHEMA_VERSION` both stay `1`), so
-  category management adds no backup migration. The starter list is usable but
-  fixed, and the user should shape categories before the first full month is
-  compared. Nothing learned in slice 3 changes slice 4; no priority shift.
-- **Category management lands before the last-month comparison.** The starter
-  list is enough to begin, but the user should be able to shape the categories
-  before the first full month is compared against the second.
+- **Slice 3 was completed on 2026-11-10; slice 4 was pulled the same day.**
+  Close-out re-checked the order. The backup file is ledger-only and the data
+  model did not change (`SCHEMA_VERSION` and `BACKUP_SCHEMA_VERSION` both stay
+  `1`), so category management adds no backup migration. The starter list is
+  usable but fixed, and the user should shape categories before the first full
+  month is compared.
+- **The 2026-11-10 scope gate re-checked the order again and found no shift.**
+  The app was first deployed on 2026-11-02, so there is no complete prior month
+  to compare and slice 5 stays premature. The starter list is the last cheap
+  thing to shape before months accumulate under names that were never the
+  user's. Slices 6–8 are supporting context by the vision's own wording.
+  Slice 3 must be merged and deployed before slice 4 ships; that is a release
+  step, not a reordering.
 - **The last-month comparison completes the headline, but it needs a month of
   data to mean anything.** It follows the trust-and-safety slices so the user
   has a reason to keep logging until there is a last month to compare.
