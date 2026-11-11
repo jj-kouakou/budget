@@ -96,6 +96,10 @@ function EntryForm({
     categories.some((category) => category.id === entry.categoryId)
       ? entry.categoryId
       : null;
+  const categoryOptions = categories.filter(
+    (category) =>
+      !category.archived || category.id === entry.categoryId,
+  );
   const storedAccountId = accounts.some(
     (account) => account.id === entry.accountId,
   )
@@ -276,7 +280,8 @@ function EntryForm({
           date={date}
           onDateChange={setDate}
           accounts={accounts}
-          categories={categories}
+          categories={categoryOptions}
+          archivedCategoryId={entry.categoryId}
           errors={errors}
           onClearError={clearError}
         />

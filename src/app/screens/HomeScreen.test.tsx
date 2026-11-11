@@ -179,6 +179,16 @@ describe('HomeScreen', () => {
     expect(window.location.hash).toBe('#/accounts');
   });
 
+  it('navigates to the categories screen', async () => {
+    const user = userEvent.setup();
+    render(<HomeScreen ledger={ledger} month="2026-11" />);
+    await screen.findByRole('button', { name: 'Categories' });
+
+    await user.click(screen.getByRole('button', { name: 'Categories' }));
+
+    expect(window.location.hash).toBe('#/categories');
+  });
+
   it('updates the total after a live write', async () => {
     render(<HomeScreen ledger={ledger} month="2026-11" />);
     await screen.findByText('No spending yet this month.');

@@ -13,8 +13,8 @@ The app replaces the spreadsheet that gets abandoned in week three.
 | 1 | Log spending and see this month by category | Set up the accounts they spend from; add an expense in under ten seconds; see this month's total and category breakdown; move between months; install the app on the phone and use it without a connection. | Done — deployed at https://jj-kouakou.github.io/budget/ |
 | 2 | Inspect and correct entries | Tap a category to see the entries behind it; fix or remove a mistaken entry. | Done — deployed at https://jj-kouakou.github.io/budget/ |
 | 3 | Keep a backup | Export the ledger to a file and restore it; see when the last backup was made and whether the phone might discard the data. | Done — 2026-11-10 on branch `slice-03`; not yet deployed |
-| 4 | Manage categories | Add, rename, archive, and unarchive categories so the breakdown matches how they think about their money. | In progress |
-| 5 | Compare with last month | See last month's category totals beside this month's. | Backlog |
+| 4 | Manage categories | Add, rename, archive, and unarchive categories so the breakdown matches how they think about their money. | Done — 2026-11-10 on branch `slice-04`; not yet deployed |
+| 5 | Compare with last month | See last month's category totals beside this month's. | In progress — scope written 2026-11-10 |
 | 6 | Track account balances | Enter opening balances and see what each account holds or owes. | Backlog |
 | 7 | Record income | Record money coming in, categorized, without inflating spending. | Backlog |
 | 8 | Record transfers | Move money between their own accounts, including paying a credit card, without counting it as spending. | Backlog |
@@ -42,6 +42,30 @@ The app replaces the spreadsheet that gets abandoned in week three.
   user's. Slices 6–8 are supporting context by the vision's own wording.
   Slice 3 must be merged and deployed before slice 4 ships; that is a release
   step, not a reordering.
+- **Slice 4 was completed on 2026-11-10; slice 5 remains next.** Close-out
+  re-checked the order and found no reordering. Category management changed no
+  stored shape — `SCHEMA_VERSION` and `BACKUP_SCHEMA_VERSION` both stay `1` —
+  and the starter list is now user-editable, so the names the breakdown will
+  use are settled before a second month accumulates. Two facts carry into
+  slice 5: compare months by category id, so a rename applies to both months
+  rather than looking like a removed and a new category; and keep categories
+  that are archived but still hold spending, because archiving never removes
+  history. Slice 5 is still the right next slice to pull, but the first
+  complete month under the deployed app is still pending (the app went live on
+  2026-11-02), so its comparison cannot be meaningfully validated until a
+  prior month exists. Merge and deploy slices 3 and 4 before shipping it.
+- **The 2026-11-10 slice-5 scope gate re-checked the order and pulled slice
+  5.** No reordering. Slice 5 is the second half of the vision's headline —
+  this month's spend by category with last month beside it — and slices 6–8
+  are supporting context by the vision's own wording. The comparison can be
+  built and checked now with prior-month entries; real-data validation waits
+  for the first complete prior month, December 2026 at the earliest, because
+  the app went live on 2026-11-02. Deferring it would leave the headline
+  incomplete when that month arrives. The release precondition is unchanged:
+  slices 3 and 4 must be merged and deployed first, since the deployed site is
+  still slice 2. Two facts carry into the slice: a rename must change the
+  label in both months, and archiving must not remove a category that still
+  has spending.
 - **The last-month comparison completes the headline, but it needs a month of
   data to mean anything.** It follows the trust-and-safety slices so the user
   has a reason to keep logging until there is a last month to compare.

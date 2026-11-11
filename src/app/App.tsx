@@ -5,6 +5,7 @@ import { navigate, useHashRoute } from './router';
 import { AccountsScreen } from './screens/AccountsScreen';
 import { AddExpenseScreen } from './screens/AddExpenseScreen';
 import { BackupScreen } from './screens/BackupScreen';
+import { CategoriesScreen } from './screens/CategoriesScreen';
 import { CategoryEntriesScreen } from './screens/CategoryEntriesScreen';
 import { EntryEditorScreen } from './screens/EntryEditorScreen';
 import { HomeScreen } from './screens/HomeScreen';
@@ -63,6 +64,8 @@ export function App({ ledger }: { ledger: Ledger }) {
           }}
         />
       );
+    case 'categories':
+      return <CategoriesScreen ledger={ledger} />;
     case 'category':
       return (
         <CategoryEntriesScreen

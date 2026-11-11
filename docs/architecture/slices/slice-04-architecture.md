@@ -4,6 +4,11 @@
 so the home breakdown uses their own words, while every amount and total
 stays unchanged.
 
+**Status:** built as designed on branch `slice-04`. The delivered interface,
+write paths, ordering, routes, screen states, and invariants match this
+document; exact copy and the backfilled implementation contract live in
+`docs/program-design/slices/slice-04-spec.md`.
+
 Extends `docs/architecture/north-star.md`,
 `docs/architecture/slices/slice-01-architecture.md`,
 `docs/architecture/slices/slice-02-architecture.md`, and
