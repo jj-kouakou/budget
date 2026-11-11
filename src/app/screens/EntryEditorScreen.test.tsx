@@ -280,6 +280,77 @@ describe('EntryEditorScreen', () => {
     expect(save).toBeDisabled();
     expect((await db.entries.get(entry.id))?.amountMinor).toBe(4500);
   });
+
+  it('opens an archived current category selected and saves without re-filing', async () => {
+    const entry = await addExpense(4500, 'cat_groceries', '2026-11-02');
+    await db.categories.update('cat_groceries', { archived: true });
+    window.location.hash = `#/entry/${entry.id}`;
+    render(<App ledger={ledger} />);
+    const user = userEvent.setup();
+
+    const option = await screen.findByRole('button', {
+      name: 'Groceries (archived)',
+    });
+    expect(option).toHaveAttribute('aria-pressed', 'true');
+    expect(
+      screen.queryByText('That category no longer exists. Choose another.'),
+    ).not.toBeInTheDocument();
+
+    await user.clear(screen.getByLabelText('Amount'));
+    await user.type(screen.getByLabelText('Amount'), '40.00');
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    await waitFor(() =>
+      expect(window.location.hash).toBe(
+        '#/category?m=2026-11&c=cat_groceries',
+      ),
+    );
+    expect(await db.entries.get(entry.id)).toMatchObject({
+      amountMinor: 4000,
+      categoryId: 'cat_groceries',
+    });
+  });
+
+  it('does not offer another archived category', async () => {
+    const entry = await addExpense(4500, 'cat_groceries', '2026-11-02');
+    await db.categories.update('cat_fun', { archived: true });
+    window.location.hash = `#/entry/${entry.id}`;
+    render(<App ledger={ledger} />);
+
+    await screen.findByRole('heading', { name: 'Correct expense' });
+    expect(
+      screen.queryByRole('button', { name: 'Fun' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Groceries' }),
+    ).toBeInTheDocument();
+  });
+
+  it('refuses a stale option list that submits another archived category', async () => {
+    const entry = await addExpense(4500, 'cat_groceries', '2026-11-02');
+    window.location.hash = `#/entry/${entry.id}`;
+    render(<App ledger={ledger} />);
+    const user = userEvent.setup();
+    await screen.findByRole('heading', { name: 'Correct expense' });
+
+    await user.click(screen.getByRole('button', { name: 'Fun' }));
+    await db.categories.update('cat_fun', { archived: true });
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('button', { name: 'Fun' }),
+      ).not.toBeInTheDocument(),
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    expect(
+      await screen.findByText('That category is archived. Choose another.'),
+    ).toBeInTheDocument();
+    expect(await db.entries.get(entry.id)).toMatchObject({
+      amountMinor: 4500,
+      categoryId: 'cat_groceries',
+    });
+  });
 });
 
 describe('EntryEditorScreen removal', () => {

@@ -80,6 +80,7 @@ export function ExpenseFields({
   onDateChange,
   accounts,
   categories,
+  archivedCategoryId,
   errors,
   onClearError,
 }: {
@@ -94,6 +95,7 @@ export function ExpenseFields({
   onDateChange: (value: string) => void;
   accounts: Account[];
   categories: Category[];
+  archivedCategoryId?: string;
   errors: ExpenseFieldErrors;
   onClearError: (field: keyof ExpenseFieldErrors) => void;
 }) {
@@ -126,7 +128,10 @@ export function ExpenseFields({
         legend="Category"
         options={categories.map((category) => ({
           id: category.id,
-          label: category.name,
+          label:
+            category.archived && category.id === archivedCategoryId
+              ? `${category.name} (archived)`
+              : category.name,
         }))}
         selectedId={categoryId}
         errorId={errors.category ? `${idPrefix}-category-error` : undefined}
