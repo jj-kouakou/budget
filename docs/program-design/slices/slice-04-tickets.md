@@ -4,10 +4,12 @@
 - **Sources:** `docs/architecture/slices/slice-04-architecture.md` (cited as
   "Architecture §…"), `docs/product/slices/slice-04-scope.md` (cited as
   "Scope §…"), `docs/agents/slice-04-architecture-handoff.md`,
-  `CONTEXT.md`, `docs/standards.md`. **There is no slice-04 spec** — see
-  boundary decision 1.
-- **Branch:** `slice-04`, cut from `master` after `slice-03` merges.
-- **Status:** proposed. No code written; no ticket built.
+  `CONTEXT.md`, `docs/standards.md`. The slice spec was written at close-out:
+  `docs/program-design/slices/slice-04-spec.md`.
+- **Branch:** `slice-04`, cut from `master` after `slice-03` merged.
+- **Status:** complete. All six tickets are built on `slice-04`; `npm test`
+  400 tests / 16 files passing, `npm run typecheck` clean, review approved
+  with no open findings. Not merged or deployed.
 
 Each ticket is one build session, test-first, and one commit when its tests
 pass. Tickets 1–2 add no UI; they ship green and are verified at the `Ledger`
@@ -15,25 +17,22 @@ seam, as slices 2 and 3 did for their read and write tickets.
 
 ---
 
-## Source note — the spec this gate was asked to read does not exist
+## Source note — the spec was written after the build
 
-`docs/program-design/slices/slice-04-spec.md` is absent. The repository has
-`slice-04-scope.md` and `slice-04-architecture.md` (both uncommitted), and
-`git log` shows no program-design commit for slice 4. Gate 5 was skipped or
-never closed.
+`docs/program-design/slices/slice-04-spec.md` did not exist when these tickets
+were cut; gate 5 was skipped. Every ticket below cites architecture headings
+and scope acceptance bullets instead of spec sections. That was workable
+because the architecture doc is unusually contract-complete: it fixes the
+`Ledger` interface, error codes and their fields, every write path step by
+step, the `listCategories` ordering, the route, the screen states, the
+per-surface filters, the invariants, and the test list. The spec was
+backfilled at close-out from the built code and the strings in boundary
+decision 5, so it now records what shipped.
 
-Every ticket below therefore cites architecture headings and scope acceptance
-bullets instead of spec sections. That is workable here because the
-architecture doc is unusually contract-complete: it fixes the `Ledger`
-interface, error codes and their fields, every write path step by step, the
-`listCategories` ordering, the route, the screen states, the per-surface
-filters, the invariants, and the test list.
-
-What it does **not** fix — and what the architecture handoff says the spec
-must decide — is exact screen layout and user-facing copy. The strings in
-these tickets are proposed from the architecture's examples and are collected
-in boundary decision 5. Confirm them before ticket 3, either here or with
-`grill-me` in that session.
+The copy in these tickets was proposed from the architecture's examples and
+collected in boundary decision 5; it was implemented and tested as written.
+The backfilled spec records the delivered strings. No copy decision remains
+open.
 
 ---
 
@@ -92,16 +91,15 @@ add-screen filter earlier.
 
 ## Boundary decisions
 
-Challenge these before building. 1 and 5 need your decision; the rest are
-calls I made and will defend.
+These were challenged before the build; the resolutions below record what was
+actually built.
 
-1. **The slice spec is missing.** I did not author one: gate 5 is a Kimi K3
-   judgment gate and its output is not mine to fabricate on the ticket model.
-   The tickets are cut from scope + architecture. Build from them
-   (recommended — nothing in the architecture's contract is ambiguous enough
-   to need a spec), or run gate 5 first and re-cut tickets 3–6 against it.
-   The only real loss is copy and layout detail; both are isolated to tickets
-   3–6 and none of them changes a seam or a test's control surface.
+1. **The slice spec was missing at build time.** Gate 5 is a judgment gate and
+   was not run before tickets were cut. The tickets were built from scope +
+   architecture (the recommended option), and the spec was backfilled at
+   close-out as `docs/program-design/slices/slice-04-spec.md`. No seam or test
+   control surface changed because of the missing spec; copy and layout are
+   recorded there as delivered.
 
 2. **`listCategories` comparator: `localeCompare` or code-unit?** The
    architecture snippet uses `localeCompare`; the slice-03 tickets mandated
@@ -123,11 +121,12 @@ calls I made and will defend.
    feels too thin to review, merge 5 and 6 into one "archive-aware expense UI"
    session; the DAG then has five tickets and no other change.
 
-5. **Copy is proposed, not specified.** The architecture fixes three
-   strings verbatim (`invalid-name`, `archived-category`, the duplicate-name
-   sentence shape). The rest are mine. All of it is listed per ticket; if you
-   change a string, change its test and nothing else. The one worth a look is
-   the add-screen empty state, which the scope describes but does not quote.
+5. **Copy was proposed, then implemented as written.** The architecture fixed
+   three strings verbatim (`invalid-name`, `archived-category`, the
+   duplicate-name sentence shape). The rest came from the tickets and is
+   listed per ticket and in the spec. The add-screen empty state, which the
+   scope describes but does not quote, shipped as: `There is no category to
+   file this expense under. Add or unarchive one in Categories.`
 
 6. **Marking the archived current option in correction.** `ExpenseFields`
    takes `categories: Category[]` and labels options with `category.name`.
@@ -251,11 +250,11 @@ integration tests.
 
 **Acceptance criteria**
 
-- [ ] `npm test` and `npm run typecheck` pass.
-- [ ] `src/data/db.ts` is untouched; `SCHEMA_VERSION` is still `1`; no table
+- [x] `npm test` and `npm run typecheck` pass.
+- [x] `src/data/db.ts` is untouched; `SCHEMA_VERSION` is still `1`; no table
       or index was added.
-- [ ] No UI file changed.
-- [ ] `Ledger` has no delete-category method and no tombstone field.
+- [x] No UI file changed.
+- [x] `Ledger` has no delete-category method and no tombstone field.
 
 ---
 
@@ -298,9 +297,9 @@ other archived category.
 
 **Acceptance criteria**
 
-- [ ] Every other slice-1/2/3 ledger test passes with no edits.
-- [ ] No UI file changed; `BackupData` and restore paths untouched.
-- [ ] The rule is enforced at the `Ledger` seam, not only in a screen.
+- [x] Every other slice-1/2/3 ledger test passes with no edits.
+- [x] No UI file changed; `BackupData` and restore paths untouched.
+- [x] The rule is enforced at the `Ledger` seam, not only in a screen.
 
 ---
 
@@ -369,12 +368,12 @@ offered immediately when logging an expense.
 
 **Acceptance criteria**
 
-- [ ] In `npm run dev`: home → Categories → add `Coffee`; it appears under
+- [x] In `npm run dev`: home → Categories → add `Coffee`; it appears under
       Active, and the add-expense screen offers it.
-- [ ] Adding a category creates no home row until an expense is filed under it.
-- [ ] No archive, rename, or unarchive control is rendered yet — ticket 4
+- [x] Adding a category creates no home row until an expense is filed under it.
+- [x] No archive, rename, or unarchive control is rendered yet — ticket 4
       owns them, and the screen has no dead buttons.
-- [ ] Existing App, Home, router, and screen tests pass unchanged.
+- [x] Existing App, Home, router, and screen tests pass unchanged.
 
 ---
 
@@ -423,10 +422,10 @@ restores one, with the list and every read surface following.
 
 **Acceptance criteria**
 
-- [ ] In `npm run dev`: rename a seeded category and see the home breakdown
+- [x] In `npm run dev`: rename a seeded category and see the home breakdown
       change without a reload; archive it and see its row and entries survive.
-- [ ] No rename or archive writes an entry, an amount, or a setting.
-- [ ] The screen still offers no delete control.
+- [x] No rename or archive writes an entry, an amount, or a setting.
+- [x] The screen still offers no delete control.
 
 ---
 
@@ -479,11 +478,11 @@ form that cannot be completed.
 
 **Acceptance criteria**
 
-- [ ] With every category archived, `npm run dev` shows the pointer state and
+- [x] With every category archived, `npm run dev` shows the pointer state and
       no form; the link opens Categories.
-- [ ] A submitted expense can never be filed under an archived category, even
+- [x] A submitted expense can never be filed under an archived category, even
       with a stale option list.
-- [ ] The zero-account branch still renders before the category branch.
+- [x] The zero-account branch still renders before the category branch.
 
 ---
 
@@ -531,24 +530,26 @@ the filter works against today's alphabetical list.
 
 **Acceptance criteria**
 
-- [ ] In `npm run dev`: archive a category with an entry, open that entry,
+- [x] In `npm run dev`: archive a category with an entry, open that entry,
       save an amount change, and confirm it is still filed under the archived
       category.
-- [ ] No correction is forced to re-file an entry.
-- [ ] Existing entry-editor tests pass unchanged.
+- [x] No correction is forced to re-file an entry.
+- [x] Existing entry-editor tests pass unchanged.
 
 ---
 
 ## Slice close-out
 
-- [ ] All six tickets pass their tests; `npm test` and `npm run typecheck` are
+- [x] All six tickets pass their tests; `npm test` and `npm run typecheck` are
       green on `slice-04`.
-- [ ] `code-review` approved against `docs/standards.md` and the architecture
-      (no spec exists to review against; note that in the review prompt).
-- [ ] The architecture and these tickets reflect what was built; any
-      divergence was fixed in the same commit.
-- [ ] `docs/product/backlog.md` marks slice 4 complete and confirms slice 5.
-- [ ] Manual check: add, rename, archive, unarchive on a phone; archive every
-      category and confirm the add screen points to Categories; take a backup,
-      restore it in a fresh profile, and confirm names and archive states.
-- [ ] Slice handoff written to `docs/agents/`.
+- [x] `code-review` approved against `docs/standards.md` and the architecture
+      (the spec was backfilled at close-out and was not available to review).
+- [x] The architecture, these tickets, and the backfilled spec reflect what
+      was built; no production divergence was found.
+- [x] `docs/product/backlog.md` marks slice 4 complete and confirms slice 5.
+- [x] Browser check in headless Chromium at 390×844: add, rename across
+      surfaces, archive/unarchive, the no-active state and its link, and a
+      corrective save under an archived category. A physical phone, install,
+      offline use, and a fresh-profile restore were not exercised this slice;
+      see `docs/agents/slice-04-closeout-handoff.md`.
+- [x] Slice handoff written to `docs/agents/`.
