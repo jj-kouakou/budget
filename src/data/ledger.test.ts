@@ -619,18 +619,38 @@ describe('addExpense', () => {
     expect(error).toMatchObject({ code: 'invalid-amount' });
   });
 
-  it('accepts an archived category', async () => {
+  it('rejects an archived category and writes nothing', async () => {
     const { db, ledger, account } = await setup();
     await db.categories.update('cat_groceries', { archived: true });
 
-    const entry = await ledger.addExpense({
-      amountMinor: 100,
-      categoryId: 'cat_groceries',
-      accountId: account.id,
-      date: '2026-11-02',
-    });
+    const error = await ledger
+      .addExpense({
+        amountMinor: 100,
+        categoryId: 'cat_groceries',
+        accountId: account.id,
+        date: '2026-11-02',
+      })
+      .catch((caught: unknown) => caught);
 
-    expect(entry.categoryId).toBe('cat_groceries');
+    expect(error).toBeInstanceOf(LedgerError);
+    expect(error).toMatchObject({ code: 'archived-category' });
+    expect(await db.entries.count()).toBe(0);
+  });
+
+  it('reports a missing category as unknown, not archived', async () => {
+    const { ledger, account } = await setup();
+
+    const error = await ledger
+      .addExpense({
+        amountMinor: 100,
+        categoryId: 'cat_missing',
+        accountId: account.id,
+        date: '2026-11-02',
+      })
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(LedgerError);
+    expect(error).toMatchObject({ code: 'unknown-category' });
   });
 
   it('aborts when settings are missing', async () => {
@@ -1149,13 +1169,13 @@ describe('categoryEntries', () => {
 
   it('resolves an archived category name', async () => {
     const { db, ledger, checking } = await setup();
-    await db.categories.update('cat_groceries', { archived: true });
     await ledger.addExpense({
       amountMinor: 100,
       categoryId: 'cat_groceries',
       accountId: checking.id,
       date: '2026-11-02',
     });
+    await db.categories.update('cat_groceries', { archived: true });
 
     expect(
       (await ledger.categoryEntries('2026-11', 'cat_groceries')).categoryName,
@@ -1257,6 +1277,82 @@ describe('updateExpense', () => {
     const card = await ledger.addAccount({ name: 'Visa', type: 'credit' });
     return { db, ledger, checking, card };
   }
+
+  it('keeps an entry filed under its own archived category', async () => {
+    const { db, ledger, checking } = await setup();
+    const entry = await ledger.addExpense({
+      amountMinor: 1000,
+      categoryId: 'cat_groceries',
+      accountId: checking.id,
+      date: '2026-11-02',
+    });
+    await db.categories.update('cat_groceries', { archived: true });
+
+    const updated = await ledger.updateExpense(entry.id, {
+      amountMinor: 450,
+      categoryId: 'cat_groceries',
+      accountId: checking.id,
+      date: '2026-11-05',
+    });
+
+    expect(updated.categoryId).toBe('cat_groceries');
+    expect(await db.entries.get(entry.id)).toEqual({
+      id: entry.id,
+      kind: 'expense',
+      date: '2026-11-05',
+      amountMinor: 450,
+      accountId: checking.id,
+      categoryId: 'cat_groceries',
+    });
+  });
+
+  it('refuses moving an entry to a different archived category', async () => {
+    const { db, ledger, checking } = await setup();
+    const entry = await ledger.addExpense({
+      amountMinor: 1000,
+      categoryId: 'cat_groceries',
+      accountId: checking.id,
+      date: '2026-11-02',
+    });
+    const before = await db.entries.get(entry.id);
+    await db.categories.update('cat_groceries', { archived: true });
+    await db.categories.update('cat_fun', { archived: true });
+
+    const error = await ledger
+      .updateExpense(entry.id, {
+        amountMinor: 1000,
+        categoryId: 'cat_fun',
+        accountId: checking.id,
+        date: '2026-11-02',
+      })
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(LedgerError);
+    expect(error).toMatchObject({ code: 'archived-category' });
+    expect(await db.entries.get(entry.id)).toEqual(before);
+  });
+
+  it('reports a missing category as unknown on update', async () => {
+    const { ledger, checking } = await setup();
+    const entry = await ledger.addExpense({
+      amountMinor: 1000,
+      categoryId: 'cat_groceries',
+      accountId: checking.id,
+      date: '2026-11-02',
+    });
+
+    const error = await ledger
+      .updateExpense(entry.id, {
+        amountMinor: 1000,
+        categoryId: 'cat_missing',
+        accountId: checking.id,
+        date: '2026-11-02',
+      })
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(LedgerError);
+    expect(error).toMatchObject({ code: 'unknown-category' });
+  });
 
   it('overwrites the four fields and preserves identity', async () => {
     const { db, ledger, checking, card } = await setup();

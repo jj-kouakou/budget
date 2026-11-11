@@ -154,7 +154,10 @@ export function createLedger(db: BudgetDatabase): Ledger {
     }
   }
 
-  async function requireExpenseFields(input: ExpenseInput): Promise<void> {
+  async function requireExpenseFields(
+    input: ExpenseInput,
+    options?: { allowArchivedCategoryId?: string },
+  ): Promise<void> {
     if (!Number.isSafeInteger(input.amountMinor) || input.amountMinor <= 0) {
       throw new LedgerError(
         'invalid-amount',
@@ -178,6 +181,15 @@ export function createLedger(db: BudgetDatabase): Ledger {
       throw new LedgerError(
         'unknown-category',
         'That category no longer exists. Choose another.',
+      );
+    }
+    if (
+      category.archived &&
+      category.id !== options?.allowArchivedCategoryId
+    ) {
+      throw new LedgerError(
+        'archived-category',
+        'That category is archived. Choose another.',
       );
     }
   }
@@ -412,7 +424,9 @@ export function createLedger(db: BudgetDatabase): Ledger {
             );
           }
 
-          await requireExpenseFields(input);
+          await requireExpenseFields(input, {
+            allowArchivedCategoryId: existing.categoryId,
+          });
 
           const updated = await db.entries.update(id, {
             date: input.date,
