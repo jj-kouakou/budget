@@ -108,3 +108,10 @@ export function formatMonth(month: MonthKey, locale?: string): string {
     year: 'numeric',
   }).format(date);
 }
+
+export function formatLocalDateTime(iso: string, locale?: string): string {
+  return new Intl.DateTimeFormat(locale, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date(iso));
+}

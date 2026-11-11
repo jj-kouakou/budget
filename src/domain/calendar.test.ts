@@ -3,6 +3,7 @@ import {
   MAX_MONTH,
   MIN_MONTH,
   addMonths,
+  formatLocalDateTime,
   formatMonth,
   isValidLocalDate,
   isValidMonthKey,
@@ -100,5 +101,25 @@ describe('formatMonth', () => {
 
   it('throws for a malformed month', () => {
     expect(() => formatMonth('2026-13', 'en-CA')).toThrow(RangeError);
+  });
+});
+
+describe('formatLocalDateTime', () => {
+  it('formats a date-time without pinning ICU output', () => {
+    const iso = '2026-11-10T19:42:11.000Z';
+
+    const formatted = formatLocalDateTime(iso, 'en-US');
+
+    expect(formatted.length).toBeGreaterThan(0);
+    expect(formatted).toContain('2026');
+    expect(formatted).not.toBe(iso);
+  });
+
+  it('accepts an omitted locale', () => {
+    expect(formatLocalDateTime('2026-11-10T19:42:11.000Z')).not.toBe('');
+  });
+
+  it('throws RangeError for invalid input', () => {
+    expect(() => formatLocalDateTime('not-a-date')).toThrow(RangeError);
   });
 });

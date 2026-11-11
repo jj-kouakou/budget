@@ -159,3 +159,27 @@ describe('AccountsScreen', () => {
     );
   });
 });
+
+
+describe('AccountsScreen restore entry', () => {
+  it('navigates to the backup screen with zero accounts', async () => {
+    const user = userEvent.setup();
+    renderScreen();
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Restore from backup' }),
+    );
+
+    expect(window.location.hash).toBe('#/backup');
+  });
+
+  it('keeps the restore entry when accounts exist', async () => {
+    const ledger = createLedger(db);
+    await ledger.addAccount({ name: 'Checking', type: 'checking' });
+    renderScreen();
+
+    expect(
+      await screen.findByRole('button', { name: 'Restore from backup' }),
+    ).toBeInTheDocument();
+  });
+});

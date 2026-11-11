@@ -10,6 +10,7 @@ export type Route =
   | { name: 'home'; month: MonthKey }
   | { name: 'add' }
   | { name: 'accounts' }
+  | { name: 'backup' }
   | { name: 'category'; month: MonthKey; categoryId: string }
   | { name: 'entry'; entryId: string };
 
@@ -25,6 +26,9 @@ export function parseHash(hash: string, today?: LocalDate): Route {
   }
   if (path === '/accounts') {
     return { name: 'accounts' };
+  }
+  if (path === '/backup') {
+    return { name: 'backup' };
   }
 
   const requestedMonth = new URLSearchParams(query).get('m');
@@ -70,6 +74,8 @@ export function routeToHash(route: Route): string {
       return '#/add';
     case 'accounts':
       return '#/accounts';
+    case 'backup':
+      return '#/backup';
     case 'category':
       return `#/category?m=${route.month}&c=${encodeURIComponent(route.categoryId)}`;
     case 'entry':

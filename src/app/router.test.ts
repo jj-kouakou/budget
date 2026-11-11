@@ -19,6 +19,8 @@ describe('parseHash', () => {
     ['#/add?m=2026-11', { name: 'add' }],
     ['#/accounts', { name: 'accounts' }],
     ['#/accounts?x=1', { name: 'accounts' }],
+    ['#/backup', { name: 'backup' }],
+    ['#/backup?x=1', { name: 'backup' }],
     [
       '#/category?m=2026-11&c=cat_groceries',
       { name: 'category', month: '2026-11', categoryId: 'cat_groceries' },
@@ -54,6 +56,7 @@ describe('routeToHash', () => {
     );
     expect(routeToHash({ name: 'add' })).toBe('#/add');
     expect(routeToHash({ name: 'accounts' })).toBe('#/accounts');
+    expect(routeToHash({ name: 'backup' })).toBe('#/backup');
     expect(
       routeToHash({
         name: 'category',

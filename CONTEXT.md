@@ -48,6 +48,15 @@ The reason money moved, attached to expenses and income. Flat, user-managed,
 one per entry. Transfers have none.
 _Avoid_: Tag, label, bucket
 
+**Active category**:
+A category offered when logging an expense. The default state of a category.
+_Avoid_: Enabled category, visible category
+
+**Archived category**:
+A category retired from the choices for new expenses but still attached to
+history. Archived categories are never deleted.
+_Avoid_: Disabled category, hidden category, deleted category
+
 **Balance**:
 What an account currently holds, derived from its entries. For a credit card,
 the amount owed.

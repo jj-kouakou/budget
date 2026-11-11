@@ -6,6 +6,11 @@ import {
   monthOf,
   todayLocalDate,
 } from '../domain/calendar';
+import {
+  createBackupFile,
+  serializeBackup,
+} from '../domain/backup';
+import type { BackupData } from '../domain/backup';
 import { BudgetDatabase } from '../data/db';
 import { createLedger } from '../data/ledger';
 import type { Ledger } from '../data/ledger';
@@ -81,6 +86,17 @@ describe('App', () => {
     ).toBeInTheDocument();
   });
 
+  it('renders the backup screen from #/backup', async () => {
+    await ledger.addAccount({ name: 'Checking', type: 'checking' });
+    window.location.hash = '#/backup';
+
+    render(<App ledger={ledger} />);
+
+    expect(
+      await screen.findByRole('heading', { name: 'Backup' }),
+    ).toBeInTheDocument();
+  });
+
   it('renders accounts from #/accounts', async () => {
     await ledger.addAccount({ name: 'Checking', type: 'checking' });
     window.location.hash = '#/accounts';
@@ -135,5 +151,125 @@ describe('BootError', () => {
       ),
     );
     container.remove();
+  });
+});
+
+
+function restoredData(withAccounts: boolean): BackupData {
+  return {
+    accounts: withAccounts
+      ? [
+          {
+            id: 'acct-restored',
+            name: 'Restored checking',
+            type: 'checking',
+            createdAt: '2026-11-01T12:00:00.000Z',
+          },
+        ]
+      : [],
+    categories: [{ id: 'cat_food', name: 'Food', archived: false }],
+    entries: withAccounts
+      ? [
+          {
+            id: 'entry-restored',
+            kind: 'expense',
+            date: todayLocalDate(),
+            amountMinor: 4321,
+            accountId: 'acct-restored',
+            categoryId: 'cat_food',
+          },
+        ]
+      : [],
+    settings: { currency: 'CAD', currencyExponent: 2 },
+  };
+}
+
+function backupUpload(withAccounts: boolean): File {
+  return new File(
+    [
+      serializeBackup(
+        createBackupFile(
+          restoredData(withAccounts),
+          new Date('2026-11-09T08:00:00.000Z'),
+        ),
+      ),
+    ],
+    'budget-backup.json',
+    { type: 'application/json' },
+  );
+}
+
+describe('App backup and restore', () => {
+  it('allows #/backup with zero accounts and does not bounce it', async () => {
+    window.location.hash = '#/backup';
+
+    render(<App ledger={ledger} />);
+
+    expect(
+      await screen.findByRole('heading', { name: 'Backup' }),
+    ).toBeInTheDocument();
+    expect(window.location.hash).toBe('#/backup');
+    expect(
+      screen.queryByRole('heading', { name: 'Accounts' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('restores from a fresh profile and lands on home with the restored total', async () => {
+    const user = userEvent.setup();
+    window.location.hash = '#/backup';
+    render(<App ledger={ledger} />);
+    await screen.findByRole('heading', { name: 'Backup' });
+
+    await user.upload(
+      screen.getByLabelText('Restore from backup'),
+      backupUpload(true),
+    );
+    await user.click(
+      await screen.findByRole('button', { name: 'Restore backup' }),
+    );
+
+    expect(
+      await screen.findByRole('heading', {
+        name: formatMonth(monthOf(todayLocalDate())),
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Spent').closest('.spent')).toHaveTextContent(
+      '43.21',
+    );
+    expect(window.location.hash).toBe(
+      `#/?m=${monthOf(todayLocalDate())}`,
+    );
+
+    await ledger.addExpense({
+      amountMinor: 100,
+      categoryId: 'cat_food',
+      accountId: 'acct-restored',
+      date: todayLocalDate(),
+    });
+    await waitFor(() =>
+      expect(screen.getByText('Spent').closest('.spent')).toHaveTextContent(
+        '44.21',
+      ),
+    );
+  });
+
+  it('lands on accounts when the restored backup has no accounts', async () => {
+    const user = userEvent.setup();
+    window.location.hash = '#/backup';
+    render(<App ledger={ledger} />);
+    await screen.findByRole('heading', { name: 'Backup' });
+
+    await user.upload(
+      screen.getByLabelText('Restore from backup'),
+      backupUpload(false),
+    );
+    await user.click(
+      await screen.findByRole('button', { name: 'Restore backup' }),
+    );
+
+    expect(
+      await screen.findByRole('heading', { name: 'Accounts' }),
+    ).toBeInTheDocument();
+    expect(window.location.hash).toBe('#/accounts');
   });
 });
