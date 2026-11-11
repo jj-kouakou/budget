@@ -44,6 +44,28 @@ describe('App', () => {
     expect(window.location.hash).toBe('#/accounts');
   });
 
+  it('forces accounts from a zero-account #/categories deep link', async () => {
+    window.location.hash = '#/categories';
+
+    render(<App ledger={ledger} />);
+
+    expect(
+      await screen.findByRole('heading', { name: 'Accounts' }),
+    ).toBeInTheDocument();
+    expect(window.location.hash).toBe('#/accounts');
+  });
+
+  it('renders the categories screen from #/categories with an account', async () => {
+    await ledger.addAccount({ name: 'Checking', type: 'checking' });
+    window.location.hash = '#/categories';
+
+    render(<App ledger={ledger} />);
+
+    expect(
+      await screen.findByRole('heading', { name: 'Categories' }),
+    ).toBeInTheDocument();
+  });
+
   it('removes the gate after the first account and Start logging reaches home', async () => {
     const user = userEvent.setup();
     render(<App ledger={ledger} />);
