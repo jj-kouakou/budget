@@ -82,6 +82,25 @@ describe('CategoriesScreen', () => {
     ).toBeInTheDocument();
   });
 
+  it('does not create a home row for a new category', async () => {
+    const user = userEvent.setup();
+    const ledger = createLedger(db);
+    await ledger.addAccount({ name: 'Checking', type: 'checking' });
+    const view = await renderScreen();
+
+    await user.type(screen.getByLabelText('Category name'), 'Coffee');
+    await user.click(screen.getByRole('button', { name: 'Add category' }));
+    await screen.findByText('Coffee');
+
+    view.unmount();
+    render(<HomeScreen ledger={ledger} month="2026-11" />);
+
+    expect(
+      await screen.findByText('No spending yet this month.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Coffee')).not.toBeInTheDocument();
+  });
+
   it('names an active category that already holds the name', async () => {
     const user = userEvent.setup();
     await renderScreen();
@@ -158,6 +177,8 @@ describe('CategoriesScreen', () => {
       accountId: account.id,
       date: '2026-10-14',
     });
+    const entriesBefore = await db.entries.toArray();
+    const settingsBefore = await db.settings.toArray();
     const view = await renderScreen();
 
     const row = rowFor('Groceries');
@@ -168,6 +189,8 @@ describe('CategoriesScreen', () => {
     await user.click(within(row).getByRole('button', { name: 'Save' }));
 
     await waitFor(() => expect(rowFor('Food')).toBeInTheDocument());
+    expect(await db.entries.toArray()).toEqual(entriesBefore);
+    expect(await db.settings.toArray()).toEqual(settingsBefore);
 
     view.unmount();
     render(<HomeScreen ledger={ledger} month="2026-10" />);
@@ -299,6 +322,8 @@ describe('CategoriesScreen', () => {
       accountId: account.id,
       date: '2026-10-14',
     });
+    const entriesBefore = await db.entries.toArray();
+    const settingsBefore = await db.settings.toArray();
     const view = await renderScreen();
 
     let row = rowFor('Groceries');
@@ -347,6 +372,8 @@ describe('CategoriesScreen', () => {
     const entries = await ledger.categoryEntries('2026-10', 'cat_groceries');
     expect(entries.rows).toHaveLength(1);
     expect(entries.totalMinor).toBe(1234);
+    expect(await db.entries.toArray()).toEqual(entriesBefore);
+    expect(await db.settings.toArray()).toEqual(settingsBefore);
   });
 });
 

@@ -210,6 +210,22 @@ describe('AddExpenseScreen', () => {
     ).toBeInTheDocument();
   });
 
+  it('renders the zero-account gate before the no-active-category state', async () => {
+    await db.accounts.clear();
+    await db.categories.clear();
+
+    render(<AddExpenseScreen ledger={ledger} />);
+
+    expect(
+      await screen.findByText('Add an account before logging an expense.'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        'There is no category to file this expense under. Add or unarchive one in Categories.',
+      ),
+    ).not.toBeInTheDocument();
+  });
+
   it('points to Categories instead of a form when every category is archived', async () => {
     const user = userEvent.setup();
     await db.categories.toCollection().modify({ archived: true });
