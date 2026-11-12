@@ -8,14 +8,19 @@ import {
   serializeBackup,
 } from '../domain/backup';
 import type { BackupData } from '../domain/backup';
-import { MAX_MONTH, MIN_MONTH, todayLocalDate } from '../domain/calendar';
+import {
+  MAX_MONTH,
+  MIN_MONTH,
+  isValidLocalDate,
+  todayLocalDate,
+} from '../domain/calendar';
 import {
   LedgerError,
   UNCATEGORIZED_CATEGORY_ID,
   UNCATEGORIZED_LABEL,
   createLedger,
 } from './ledger';
-import type { Ledger } from './ledger';
+import type { Ledger, AccountBalanceListItem } from './ledger';
 import { STARTER_CATEGORIES } from './seed';
 
 const databases: BudgetDatabase[] = [];
@@ -58,6 +63,17 @@ function makeAccount(overrides: Partial<Account> = {}): Account {
     createdAt: '2026-11-01T12:00:00.000Z',
     ...overrides,
   };
+}
+
+function balanceRow(
+  rows: AccountBalanceListItem[],
+  id: string,
+): AccountBalanceListItem {
+  const row = rows.find((candidate) => candidate.id === id);
+  if (!row) {
+    throw new Error(`Missing balance row for ${id}`);
+  }
+  return row;
 }
 
 describe('initialize', () => {
@@ -5019,5 +5035,595 @@ describe('addAccount with an opening', () => {
     expect((await db.settings.get('app'))?.lastAccountId).toBe(
       'acct-existing',
     );
+  });
+});
+
+describe('setOpeningBalance', () => {
+  async function setup() {
+    const db = openDatabase();
+    const ledger = createLedger(db);
+    await ledger.initialize();
+    const checking = await ledger.addAccount({
+      name: 'Checking',
+      type: 'checking',
+    });
+    const card = await ledger.addAccount({ name: 'Visa', type: 'credit' });
+    return { db, ledger, checking, card };
+  }
+
+  it('creates one opening dated the creation local date', async () => {
+    const { db, ledger, checking } = await setup();
+
+    await ledger.setOpeningBalance(checking.id, 1500);
+
+    expect(await db.entries.toArray()).toEqual([
+      {
+        id: expect.any(String),
+        kind: 'opening',
+        date: todayLocalDate(new Date(checking.createdAt)),
+        amountMinor: 1500,
+        accountId: checking.id,
+      },
+    ]);
+    expect(balanceRow(await ledger.listAccountBalances(), checking.id)).toMatchObject({
+      balanceMinor: 1500,
+      openingBalanceMinor: 1500,
+      hasOpeningBalance: true,
+    });
+  });
+
+  it('updates the same opening on a second call', async () => {
+    const { db, ledger, checking } = await setup();
+    await ledger.setOpeningBalance(checking.id, 1500);
+    const [first] = await db.entries.toArray();
+
+    await ledger.setOpeningBalance(checking.id, 2500);
+
+    const entries = await db.entries.toArray();
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      id: first?.id,
+      kind: 'opening',
+      amountMinor: 2500,
+      accountId: checking.id,
+    });
+    expect(balanceRow(await ledger.listAccountBalances(), checking.id)).toMatchObject({
+      balanceMinor: 2500,
+      openingBalanceMinor: 2500,
+      hasOpeningBalance: true,
+    });
+  });
+
+  it('clears every opening and restores the movement-only balance', async () => {
+    const { db, ledger, checking } = await setup();
+    await ledger.setOpeningBalance(checking.id, 1000);
+    await ledger.addExpense({
+      amountMinor: 300,
+      categoryId: 'cat_groceries',
+      accountId: checking.id,
+      date: '2026-11-02',
+    });
+
+    await ledger.setOpeningBalance(checking.id, null);
+
+    expect(await db.entries.toArray()).toEqual([
+      expect.objectContaining({ kind: 'expense', amountMinor: 300 }),
+    ]);
+    expect(balanceRow(await ledger.listAccountBalances(), checking.id)).toMatchObject({
+      balanceMinor: -300,
+      openingBalanceMinor: 0,
+      hasOpeningBalance: false,
+    });
+  });
+
+  it('is a no-op when clearing an account with no opening', async () => {
+    const { db, ledger, checking } = await setup();
+
+    await ledger.setOpeningBalance(checking.id, null);
+
+    expect(await db.entries.count()).toBe(0);
+    expect(balanceRow(await ledger.listAccountBalances(), checking.id)).toMatchObject({
+      balanceMinor: 0,
+      hasOpeningBalance: false,
+    });
+  });
+
+  it('rejects an unknown account and writes nothing', async () => {
+    const { db, ledger } = await setup();
+
+    const error = await ledger
+      .setOpeningBalance('missing', 100)
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(LedgerError);
+    expect(error).toMatchObject({ code: 'unknown-account' });
+    expect(await db.entries.count()).toBe(0);
+  });
+
+  it.each([NaN, Infinity, 1.5, Number.MAX_SAFE_INTEGER + 1])(
+    'rejects an amount of %s and writes nothing',
+    async (amountMinor) => {
+      const { db, ledger, checking } = await setup();
+
+      const error = await ledger
+        .setOpeningBalance(checking.id, amountMinor)
+        .catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(LedgerError);
+      expect(error).toMatchObject({ code: 'invalid-opening-amount' });
+      expect(await db.entries.count()).toBe(0);
+    },
+  );
+
+  it.each([0, -500])('accepts the safe integer %s', async (amountMinor) => {
+    const { db, ledger, checking } = await setup();
+
+    await ledger.setOpeningBalance(checking.id, amountMinor);
+
+    const [entry] = await db.entries.toArray();
+    expect(entry).toMatchObject({
+      kind: 'opening',
+      amountMinor,
+      accountId: checking.id,
+    });
+    expect(balanceRow(await ledger.listAccountBalances(), checking.id)).toMatchObject({
+      balanceMinor: amountMinor,
+      openingBalanceMinor: amountMinor,
+      hasOpeningBalance: true,
+    });
+  });
+
+  it('normalizes a negative zero amount', async () => {
+    const { db, ledger, checking } = await setup();
+
+    await ledger.setOpeningBalance(checking.id, -0);
+
+    const [entry] = await db.entries.toArray();
+    expect(Object.is(entry?.amountMinor, 0)).toBe(true);
+  });
+
+  it('collapses duplicate openings to the lowest id on set and clear', async () => {
+    const { db, ledger, checking } = await setup();
+    await db.entries.bulkAdd([
+      {
+        id: 'opening-b',
+        kind: 'opening',
+        date: '2026-11-01',
+        amountMinor: 100,
+        accountId: checking.id,
+      },
+      {
+        id: 'opening-a',
+        kind: 'opening',
+        date: '2026-11-02',
+        amountMinor: 250,
+        accountId: checking.id,
+      },
+    ]);
+
+    await ledger.setOpeningBalance(checking.id, 999);
+
+    expect(await db.entries.toArray()).toEqual([
+      {
+        id: 'opening-a',
+        kind: 'opening',
+        date: '2026-11-02',
+        amountMinor: 999,
+        accountId: checking.id,
+      },
+    ]);
+    expect(balanceRow(await ledger.listAccountBalances(), checking.id)).toMatchObject({
+      balanceMinor: 999,
+      openingBalanceMinor: 999,
+      hasOpeningBalance: true,
+    });
+
+    await db.entries.add({
+      id: 'opening-c',
+      kind: 'opening',
+      date: '2026-11-03',
+      amountMinor: 500,
+      accountId: checking.id,
+    });
+    await ledger.setOpeningBalance(checking.id, null);
+
+    expect(await db.entries.count()).toBe(0);
+    expect(balanceRow(await ledger.listAccountBalances(), checking.id)).toMatchObject({
+      balanceMinor: 0,
+      openingBalanceMinor: 0,
+      hasOpeningBalance: false,
+    });
+  });
+
+  it('preserves stray fields on an updated opening', async () => {
+    const { db, ledger, checking } = await setup();
+    await db.entries.add({
+      id: 'stray',
+      kind: 'opening',
+      date: '2026-11-01',
+      amountMinor: 100,
+      accountId: checking.id,
+      categoryId: 'cat_groceries',
+      toAccountId: 'elsewhere',
+    });
+
+    await ledger.setOpeningBalance(checking.id, 400);
+
+    expect(await db.entries.get('stray')).toEqual({
+      id: 'stray',
+      kind: 'opening',
+      date: '2026-11-01',
+      amountMinor: 400,
+      accountId: checking.id,
+      categoryId: 'cat_groceries',
+      toAccountId: 'elsewhere',
+    });
+  });
+
+  it('leaves the account and settings untouched', async () => {
+    const { db, ledger, checking } = await setup();
+    await db.settings.update('app', { lastAccountId: checking.id });
+
+    await ledger.setOpeningBalance(checking.id, 100);
+
+    expect(await db.accounts.get(checking.id)).toEqual(checking);
+    expect((await db.settings.get('app'))?.lastAccountId).toBe(checking.id);
+  });
+
+  it('falls back to today for a non-date createdAt', async () => {
+    const { db, ledger } = await setup();
+    await db.accounts.add({
+      id: 'broken',
+      name: 'Broken',
+      type: 'checking',
+      createdAt: 'not-a-date',
+    });
+
+    await ledger.setOpeningBalance('broken', 100);
+
+    const [entry] = await db.entries.toArray();
+    expect(entry?.date).toBe(todayLocalDate());
+    expect(isValidLocalDate(entry?.date ?? '')).toBe(true);
+  });
+});
+
+describe('opening balance invariants', () => {
+  async function setup() {
+    const db = openDatabase();
+    const ledger = createLedger(db);
+    await ledger.initialize();
+    const checking = await ledger.addAccount({
+      name: 'Checking',
+      type: 'checking',
+    });
+    const card = await ledger.addAccount({ name: 'Visa', type: 'credit' });
+    return { db, ledger, checking, card };
+  }
+
+  it('leaves spending reads unchanged', async () => {
+    const { db, ledger, checking } = await setup();
+    await ledger.addExpense({
+      amountMinor: 1000,
+      categoryId: 'cat_groceries',
+      accountId: checking.id,
+      date: '2026-11-02',
+    });
+    await ledger.addExpense({
+      amountMinor: 2000,
+      categoryId: 'cat_groceries',
+      accountId: checking.id,
+      date: '2026-10-02',
+    });
+    const current = await ledger.monthSummary('2026-11');
+    const previous = await ledger.monthSummary('2026-10');
+    const entries = await ledger.categoryEntries('2026-11', 'cat_groceries');
+
+    await db.entries.bulkAdd([
+      {
+        id: 'opening-current',
+        kind: 'opening',
+        date: '2026-11-05',
+        amountMinor: 500,
+        accountId: checking.id,
+        categoryId: 'cat_groceries',
+      },
+      {
+        id: 'opening-previous',
+        kind: 'opening',
+        date: '2026-10-05',
+        amountMinor: 700,
+        accountId: checking.id,
+        categoryId: 'cat_groceries',
+      },
+    ]);
+
+    expect(await ledger.monthSummary('2026-11')).toEqual(current);
+    expect(await ledger.monthSummary('2026-10')).toEqual(previous);
+    expect(
+      await ledger.categoryEntries('2026-11', 'cat_groceries'),
+    ).toEqual(entries);
+  });
+
+  it('never lists an opening as income or a transfer', async () => {
+    const { db, ledger, checking } = await setup();
+    await db.entries.add({
+      id: 'opening',
+      kind: 'opening',
+      date: '2026-11-02',
+      amountMinor: 500,
+      accountId: checking.id,
+    });
+
+    expect(await ledger.listIncome()).toEqual([]);
+    expect(await ledger.listTransfers()).toEqual([]);
+  });
+
+  it('updates balances after expense, income, and transfer changes', async () => {
+    const { ledger, checking, card } = await setup();
+
+    const expense = await ledger.addExpense({
+      amountMinor: 1000,
+      categoryId: 'cat_groceries',
+      accountId: checking.id,
+      date: '2026-11-02',
+    });
+    expect(balanceRow(await ledger.listAccountBalances(), checking.id).balanceMinor).toBe(
+      -1000,
+    );
+
+    await ledger.updateExpense(expense.id, {
+      amountMinor: 1500,
+      categoryId: 'cat_groceries',
+      accountId: checking.id,
+      date: '2026-11-02',
+    });
+    expect(balanceRow(await ledger.listAccountBalances(), checking.id).balanceMinor).toBe(
+      -1500,
+    );
+
+    await ledger.deleteExpense(expense.id);
+    expect(balanceRow(await ledger.listAccountBalances(), checking.id).balanceMinor).toBe(0);
+
+    const income = await ledger.addIncome({
+      amountMinor: 2000,
+      categoryId: 'cat_other',
+      accountId: checking.id,
+      date: '2026-11-02',
+    });
+    expect(balanceRow(await ledger.listAccountBalances(), checking.id).balanceMinor).toBe(
+      2000,
+    );
+
+    await ledger.updateIncome(income.id, {
+      amountMinor: 2500,
+      categoryId: 'cat_other',
+      accountId: checking.id,
+      date: '2026-11-02',
+    });
+    expect(balanceRow(await ledger.listAccountBalances(), checking.id).balanceMinor).toBe(
+      2500,
+    );
+
+    await ledger.deleteIncome(income.id);
+    expect(balanceRow(await ledger.listAccountBalances(), checking.id).balanceMinor).toBe(0);
+
+    const transfer = await ledger.addTransfer({
+      amountMinor: 700,
+      accountId: checking.id,
+      toAccountId: card.id,
+      date: '2026-11-02',
+    });
+    const afterAdd = await ledger.listAccountBalances();
+    expect(balanceRow(afterAdd, checking.id).balanceMinor).toBe(-700);
+    expect(balanceRow(afterAdd, card.id).balanceMinor).toBe(700);
+
+    await ledger.updateTransfer(transfer.id, {
+      amountMinor: 900,
+      accountId: checking.id,
+      toAccountId: card.id,
+      date: '2026-11-02',
+    });
+    const afterUpdate = await ledger.listAccountBalances();
+    expect(balanceRow(afterUpdate, checking.id).balanceMinor).toBe(-900);
+    expect(balanceRow(afterUpdate, card.id).balanceMinor).toBe(900);
+
+    await ledger.deleteTransfer(transfer.id);
+    const afterDelete = await ledger.listAccountBalances();
+    expect(balanceRow(afterDelete, checking.id).balanceMinor).toBe(0);
+    expect(balanceRow(afterDelete, card.id).balanceMinor).toBe(0);
+  });
+});
+
+describe('opening balance backup round-trip', () => {
+  async function setup() {
+    const db = openDatabase();
+    const ledger = createLedger(db);
+    await ledger.initialize();
+    const checking = await ledger.addAccount({
+      name: 'Checking',
+      type: 'checking',
+    });
+    return { db, ledger, checking };
+  }
+
+  async function roundTrip(ledger: Ledger): Promise<Ledger> {
+    const data = await ledger.readBackupData();
+    const file = createBackupFile(
+      data,
+      new Date('2026-11-12T12:00:00.000Z'),
+    );
+    const parsed = parseBackupFile(serializeBackup(file));
+    const fresh = openDatabase();
+    const restored = createLedger(fresh);
+    await restored.restoreBackup(parsed.data);
+    return restored;
+  }
+
+  it('reproduces an opening exactly through a backup file', async () => {
+    const { db, ledger, checking } = await setup();
+    await ledger.setOpeningBalance(checking.id, -1500);
+    await ledger.addExpense({
+      amountMinor: 300,
+      categoryId: 'cat_groceries',
+      accountId: checking.id,
+      date: '2026-11-02',
+    });
+    const data = await ledger.readBackupData();
+    expect(data.entries).toContainEqual(
+      expect.objectContaining({ kind: 'opening', amountMinor: -1500 }),
+    );
+
+    const restored = await roundTrip(ledger);
+
+    expect(await restored.listAccountBalances()).toEqual([
+      {
+        id: checking.id,
+        name: 'Checking',
+        type: 'checking',
+        balanceMinor: -1800,
+        openingBalanceMinor: -1500,
+        hasOpeningBalance: true,
+      },
+    ]);
+    const freshDb = openDatabase();
+    const fresh = createLedger(freshDb);
+    await fresh.restoreBackup(data);
+    expect(await freshDb.entries.toArray()).toContainEqual(
+      expect.objectContaining({ kind: 'opening', amountMinor: -1500 }),
+    );
+  });
+
+  it('restores an older file without openings', async () => {
+    const fresh = openDatabase();
+    const restored = createLedger(fresh);
+    await restored.restoreBackup({
+      accounts: [
+        {
+          id: 'acct-1',
+          name: 'Checking',
+          type: 'checking',
+          createdAt: '2026-11-01T12:00:00.000Z',
+        },
+      ],
+      categories: [],
+      entries: [
+        {
+          id: 'expense',
+          kind: 'expense',
+          date: '2026-11-02',
+          amountMinor: 300,
+          accountId: 'acct-1',
+          categoryId: 'cat_groceries',
+        },
+      ],
+      settings: { currency: 'CAD', currencyExponent: 2 },
+    });
+
+    expect(await restored.listAccountBalances()).toEqual([
+      {
+        id: 'acct-1',
+        name: 'Checking',
+        type: 'checking',
+        balanceMinor: -300,
+        openingBalanceMinor: 0,
+        hasOpeningBalance: false,
+      },
+    ]);
+  });
+
+  it('sums duplicate restored openings and collapses them on set', async () => {
+    const fresh = openDatabase();
+    const restored = createLedger(fresh);
+    await restored.restoreBackup({
+      accounts: [
+        {
+          id: 'acct-1',
+          name: 'Checking',
+          type: 'checking',
+          createdAt: '2026-11-01T12:00:00.000Z',
+        },
+      ],
+      categories: [],
+      entries: [
+        {
+          id: 'opening-b',
+          kind: 'opening',
+          date: '2026-11-01',
+          amountMinor: 100,
+          accountId: 'acct-1',
+        },
+        {
+          id: 'opening-a',
+          kind: 'opening',
+          date: '2026-11-02',
+          amountMinor: 250,
+          accountId: 'acct-1',
+        },
+      ],
+      settings: { currency: 'CAD', currencyExponent: 2 },
+    });
+
+    expect((await restored.listAccountBalances())[0]).toMatchObject({
+      balanceMinor: 350,
+      openingBalanceMinor: 350,
+      hasOpeningBalance: true,
+    });
+
+    await restored.setOpeningBalance('acct-1', 500);
+
+    expect(await fresh.entries.toArray()).toEqual([
+      {
+        id: 'opening-a',
+        kind: 'opening',
+        date: '2026-11-02',
+        amountMinor: 500,
+        accountId: 'acct-1',
+      },
+    ]);
+  });
+
+  it('replaces the destination opening on restore', async () => {
+    const { db, ledger, checking } = await setup();
+    await ledger.setOpeningBalance(checking.id, 999);
+    const data = await ledger.readBackupData();
+    data.accounts = [
+      {
+        id: 'acct-new',
+        name: 'New',
+        type: 'checking',
+        createdAt: '2026-11-05T12:00:00.000Z',
+      },
+    ];
+    data.entries = [
+      {
+        id: 'opening-new',
+        kind: 'opening',
+        date: '2026-11-05',
+        amountMinor: 100,
+        accountId: 'acct-new',
+      },
+    ];
+
+    await ledger.restoreBackup(data);
+
+    expect(await db.entries.toArray()).toEqual([
+      {
+        id: 'opening-new',
+        kind: 'opening',
+        date: '2026-11-05',
+        amountMinor: 100,
+        accountId: 'acct-new',
+      },
+    ]);
+    expect((await ledger.listAccountBalances())[0]).toMatchObject({
+      id: 'acct-new',
+      balanceMinor: 100,
+      hasOpeningBalance: true,
+    });
+  });
+
+  it('keeps both schema versions at 1', () => {
+    expect(SCHEMA_VERSION).toBe(1);
+    expect(BACKUP_SCHEMA_VERSION).toBe(1);
   });
 });

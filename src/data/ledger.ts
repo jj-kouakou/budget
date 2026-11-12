@@ -170,6 +170,10 @@ export interface Ledger {
   listAccounts(): Promise<Account[]>;
   listAccountBalances(): Promise<AccountBalanceListItem[]>;
   addAccount(input: AddAccountInput): Promise<Account>;
+  setOpeningBalance(
+    accountId: string,
+    amountMinor: number | null,
+  ): Promise<void>;
   renameAccount(id: string, name: string): Promise<void>;
   listCategories(): Promise<Category[]>;
   addCategory(name: string): Promise<Category>;
@@ -497,6 +501,64 @@ export function createLedger(db: BudgetDatabase): Ledger {
       });
 
       return account;
+    },
+
+    async setOpeningBalance(accountId, amountMinor) {
+      if (amountMinor !== null && !Number.isSafeInteger(amountMinor)) {
+        throw new LedgerError(
+          'invalid-opening-amount',
+          'Enter a valid starting amount.',
+        );
+      }
+
+      const normalized = amountMinor === 0 ? 0 : amountMinor;
+
+      await db.transaction('rw', db.accounts, db.entries, async () => {
+        const account = await db.accounts.get(accountId);
+        if (!account) {
+          throw new LedgerError(
+            'unknown-account',
+            'That account no longer exists. Choose another.',
+          );
+        }
+
+        const openings = (await db.entries.toArray())
+          .filter(
+            (entry) =>
+              entry.kind === 'opening' && entry.accountId === accountId,
+          )
+          .sort((left, right) => left.id.localeCompare(right.id));
+
+        if (normalized === null) {
+          if (openings.length > 0) {
+            await db.entries.bulkDelete(
+              openings.map((entry) => entry.id),
+            );
+          }
+          return;
+        }
+
+        if (openings.length === 0) {
+          await insertEntry({
+            id: crypto.randomUUID(),
+            kind: 'opening',
+            date: openingDateFor(account),
+            amountMinor: normalized,
+            accountId,
+          });
+          return;
+        }
+
+        const first = openings[0];
+        if (first === undefined) {
+          return;
+        }
+        await db.entries.update(first.id, { amountMinor: normalized });
+        const extraIds = openings.slice(1).map((entry) => entry.id);
+        if (extraIds.length > 0) {
+          await db.entries.bulkDelete(extraIds);
+        }
+      });
     },
 
     async renameAccount(id, name) {
