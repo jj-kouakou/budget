@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { formatAmount, formatAmountInput, parseAmount } from './money';
+import {
+  formatAmount,
+  formatAmountInput,
+  parseAmount,
+  parseSignedAmount,
+} from './money';
 
 describe('parseAmount', () => {
   it.each([
@@ -51,6 +56,92 @@ describe('parseAmount', () => {
 
   it.each([-1, 7, 1.5])('throws RangeError for exponent %s', (exponent) => {
     expect(() => parseAmount('12', exponent)).toThrow(RangeError);
+  });
+});
+
+describe('parseSignedAmount', () => {
+  it.each([
+    ['12', 1200],
+    ['12.3', 1230],
+    ['12,34', 1234],
+    ['0', 0],
+    ['0.00', 0],
+    ['00012.30', 1230],
+  ])('parses positive %j at exponent 2', (input, expected) => {
+    expect(parseSignedAmount(input, 2)).toBe(expected);
+  });
+
+  it.each([
+    ['-12', -1200],
+    ['-12.3', -1230],
+    ['-12,34', -1234],
+    ['-00012.30', -1230],
+  ])('parses negative %j at exponent 2', (input, expected) => {
+    expect(parseSignedAmount(input, 2)).toBe(expected);
+  });
+
+  it('trims surrounding whitespace', () => {
+    expect(parseSignedAmount(' -12,34 ', 2)).toBe(-1234);
+    expect(parseSignedAmount(' 12,34 ', 2)).toBe(1234);
+  });
+
+  it.each(['-0', '-0.00', '-0,00'])(
+    'returns positive zero for %j',
+    (input) => {
+      expect(Object.is(parseSignedAmount(input, 2), 0)).toBe(true);
+    },
+  );
+
+  it.each([
+    '12.345',
+    '-12.345',
+    '1,234.56',
+    '-1,234.56',
+    '1.234,56',
+    '-1.234,56',
+    '1,2,3',
+    '-1,2,3',
+    '1 000',
+    '-1 000',
+    '1e3',
+    '-1e3',
+    'NaN',
+    'Infinity',
+    '.5',
+    '-.5',
+    '5.',
+    '-5.',
+    '',
+    '   ',
+  ])('rejects %j at exponent 2', (input) => {
+    expect(parseSignedAmount(input, 2)).toBeNull();
+  });
+
+  it.each(['-', '--5', '-+5', '+5', '- 5'])(
+    'rejects the malformed sign %j',
+    (input) => {
+      expect(parseSignedAmount(input, 2)).toBeNull();
+    },
+  );
+
+  it('rejects values above Number.MAX_SAFE_INTEGER in both signs', () => {
+    expect(parseSignedAmount('90071992547409.92', 2)).toBeNull();
+    expect(parseSignedAmount('-90071992547409.92', 2)).toBeNull();
+  });
+
+  it('accepts only digits at exponent 0', () => {
+    expect(parseSignedAmount('12', 0)).toBe(12);
+    expect(parseSignedAmount('-12', 0)).toBe(-12);
+    expect(Object.is(parseSignedAmount('-0', 0), 0)).toBe(true);
+    expect(parseSignedAmount('12.5', 0)).toBeNull();
+    expect(parseSignedAmount('-12.5', 0)).toBeNull();
+    expect(parseSignedAmount('12,0', 0)).toBeNull();
+    expect(parseSignedAmount('-12,0', 0)).toBeNull();
+    expect(parseSignedAmount('12.', 0)).toBeNull();
+  });
+
+  it.each([-1, 7, 1.5])('throws RangeError for exponent %s', (exponent) => {
+    expect(() => parseSignedAmount('12', exponent)).toThrow(RangeError);
   });
 });
 

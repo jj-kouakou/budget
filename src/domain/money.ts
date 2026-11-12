@@ -36,6 +36,25 @@ export function parseAmount(input: string, exponent: number): number | null {
   return Number.isSafeInteger(amount) ? amount : null;
 }
 
+export function parseSignedAmount(
+  input: string,
+  exponent: number,
+): number | null {
+  const trimmed = input.trim();
+  const negative = trimmed.startsWith('-');
+  const unsigned = negative ? trimmed.slice(1) : trimmed;
+
+  const magnitude = parseAmount(unsigned, exponent);
+  if (magnitude === null) {
+    return null;
+  }
+  if (negative && !/^\d/.test(unsigned)) {
+    return null;
+  }
+
+  return negative && magnitude !== 0 ? -magnitude : magnitude;
+}
+
 export function formatAmountInput(
   amountMinor: number,
   exponent: number,
