@@ -24,6 +24,15 @@ export interface AddAccountInput {
   type: AccountType;
 }
 
+export interface AccountBalanceListItem {
+  id: string;
+  name: string;
+  type: AccountType;
+  balanceMinor: number;
+  openingBalanceMinor: number;
+  hasOpeningBalance: boolean;
+}
+
 export interface CategorizedEntryInput {
   amountMinor: number;
   categoryId: string;
@@ -156,6 +165,7 @@ export class LedgerError extends Error {
 export interface Ledger {
   initialize(): Promise<void>;
   listAccounts(): Promise<Account[]>;
+  listAccountBalances(): Promise<AccountBalanceListItem[]>;
   addAccount(input: AddAccountInput): Promise<Account>;
   renameAccount(id: string, name: string): Promise<void>;
   listCategories(): Promise<Category[]>;
@@ -212,6 +222,13 @@ function requireCategoryName(name: string): string {
 
 function categoryNameKey(name: string): string {
   return name.trim().toLowerCase();
+}
+
+function compareAccountsByCreation(left: Account, right: Account): number {
+  return (
+    left.createdAt.localeCompare(right.createdAt) ||
+    left.id.localeCompare(right.id)
+  );
 }
 
 export function createLedger(db: BudgetDatabase): Ledger {
@@ -350,11 +367,74 @@ export function createLedger(db: BudgetDatabase): Ledger {
 
     async listAccounts() {
       const accounts = await db.accounts.toArray();
-      return accounts.sort(
-        (left, right) =>
-          left.createdAt.localeCompare(right.createdAt) ||
-          left.id.localeCompare(right.id),
-      );
+      return accounts.sort(compareAccountsByCreation);
+    },
+
+    async listAccountBalances() {
+      return db.transaction('r', db.accounts, db.entries, async () => {
+        const accounts = (await db.accounts.toArray()).sort(
+          compareAccountsByCreation,
+        );
+        const entries = await db.entries.toArray();
+        const knownAccountIds = new Set(
+          accounts.map((account) => account.id),
+        );
+        const balances = new Map<string, number>();
+        const openingSums = new Map<string, number>();
+        const openingAccountIds = new Set<string>();
+
+        const addEffect = (
+          totals: Map<string, number>,
+          accountId: string,
+          amountMinor: number,
+        ) => {
+          totals.set(accountId, (totals.get(accountId) ?? 0) + amountMinor);
+        };
+
+        for (const entry of entries) {
+          if (entry.kind === 'opening') {
+            if (!knownAccountIds.has(entry.accountId)) {
+              continue;
+            }
+            addEffect(balances, entry.accountId, entry.amountMinor);
+            addEffect(openingSums, entry.accountId, entry.amountMinor);
+            openingAccountIds.add(entry.accountId);
+          } else if (entry.kind === 'expense') {
+            if (knownAccountIds.has(entry.accountId)) {
+              addEffect(balances, entry.accountId, -entry.amountMinor);
+            }
+          } else if (entry.kind === 'income') {
+            if (knownAccountIds.has(entry.accountId)) {
+              addEffect(balances, entry.accountId, entry.amountMinor);
+            }
+          } else if (entry.kind === 'transfer') {
+            if (knownAccountIds.has(entry.accountId)) {
+              addEffect(balances, entry.accountId, -entry.amountMinor);
+            }
+            const destinationId = entry.toAccountId;
+            if (
+              destinationId !== undefined &&
+              knownAccountIds.has(destinationId)
+            ) {
+              addEffect(balances, destinationId, entry.amountMinor);
+            }
+          }
+        }
+
+        return accounts.map((account) => {
+          const balance = balances.get(account.id) ?? 0;
+          const opening = openingSums.get(account.id) ?? 0;
+
+          return {
+            id: account.id,
+            name: account.name,
+            type: account.type,
+            balanceMinor: balance === 0 ? 0 : balance,
+            openingBalanceMinor: opening === 0 ? 0 : opening,
+            hasOpeningBalance: openingAccountIds.has(account.id),
+          };
+        });
+      });
     },
 
     async addAccount(input) {
