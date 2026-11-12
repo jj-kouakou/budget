@@ -30,6 +30,25 @@ export interface ExpenseInput {
   date: LocalDate;
 }
 
+export interface TransferInput {
+  amountMinor: number;
+  accountId: string;
+  toAccountId: string;
+  date: LocalDate;
+}
+
+export interface TransferListItem {
+  id: string;
+  date: LocalDate;
+  amountMinor: number;
+  accountId: string;
+  accountName: string;
+  accountType: AccountType | null;
+  toAccountId: string;
+  toAccountName: string;
+  toAccountType: AccountType | null;
+}
+
 export interface EntryListItem {
   id: string;
   date: LocalDate;
@@ -107,7 +126,9 @@ export type LedgerErrorCode =
   | 'unknown-entry'
   | 'unsupported-entry-kind'
   | 'duplicate-category-name'
-  | 'archived-category';
+  | 'archived-category'
+  | 'unknown-to-account'
+  | 'same-transfer-account';
 
 export class LedgerError extends Error {
   readonly name = 'LedgerError';
@@ -133,6 +154,8 @@ export interface Ledger {
   addExpense(input: ExpenseInput): Promise<Entry>;
   updateExpense(id: string, input: ExpenseInput): Promise<Entry>;
   deleteExpense(id: string): Promise<Entry>;
+  listTransfers(): Promise<TransferListItem[]>;
+  addTransfer(input: TransferInput): Promise<Entry>;
   getEntry(id: string): Promise<Entry | null>;
   categoryEntries(
     month: MonthKey,
@@ -230,6 +253,47 @@ export function createLedger(db: BudgetDatabase): Ledger {
       throw new LedgerError(
         'archived-category',
         'That category is archived. Choose another.',
+      );
+    }
+  }
+
+  async function insertEntry(entry: Entry): Promise<Entry> {
+    await db.entries.add(entry);
+    return entry;
+  }
+
+  async function requireTransferFields(
+    input: TransferInput,
+  ): Promise<void> {
+    if (!Number.isSafeInteger(input.amountMinor) || input.amountMinor <= 0) {
+      throw new LedgerError(
+        'invalid-amount',
+        'Enter an amount greater than zero.',
+      );
+    }
+    if (!isValidLocalDate(input.date)) {
+      throw new LedgerError('invalid-date', 'Choose a valid date.');
+    }
+    if (input.accountId === input.toAccountId) {
+      throw new LedgerError(
+        'same-transfer-account',
+        'Choose two different accounts.',
+      );
+    }
+
+    const source = await db.accounts.get(input.accountId);
+    if (!source) {
+      throw new LedgerError(
+        'unknown-account',
+        'That account no longer exists. Choose another.',
+      );
+    }
+
+    const destination = await db.accounts.get(input.toAccountId);
+    if (!destination) {
+      throw new LedgerError(
+        'unknown-to-account',
+        'That account no longer exists. Choose another.',
       );
     }
   }
@@ -373,7 +437,7 @@ export function createLedger(db: BudgetDatabase): Ledger {
             accountId: input.accountId,
             categoryId: input.categoryId,
           };
-          await db.entries.add(entry);
+          await insertEntry(entry);
 
           const settings = await db.settings.get('app');
           if (!settings) {
@@ -516,6 +580,84 @@ export function createLedger(db: BudgetDatabase): Ledger {
         await db.entries.delete(id);
         return existing;
       });
+    },
+
+    async listTransfers() {
+      return db.transaction('r', db.entries, db.accounts, async () => {
+        const entries = await db.entries.orderBy('date').reverse().toArray();
+        const transfers = entries.filter(
+          (entry) => entry.kind === 'transfer',
+        );
+
+        transfers.sort(
+          (left, right) =>
+            right.date.localeCompare(left.date) ||
+            right.id.localeCompare(left.id),
+        );
+
+        const accountIds = [
+          ...new Set(
+            transfers.flatMap((entry) => {
+              const destinationId = entry.toAccountId;
+              return destinationId === undefined
+                ? [entry.accountId]
+                : [entry.accountId, destinationId];
+            }),
+          ),
+        ].filter((id) => id !== '');
+
+        const accounts = await db.accounts.bulkGet(accountIds);
+        const accountById = new Map<string, Account>();
+        accounts.forEach((account, index) => {
+          const accountId = accountIds[index];
+          if (account && accountId !== undefined) {
+            accountById.set(accountId, account);
+          }
+        });
+
+        return transfers.map((entry) => {
+          const source = accountById.get(entry.accountId);
+          const destinationId = entry.toAccountId;
+          const destination =
+            destinationId === undefined
+              ? undefined
+              : accountById.get(destinationId);
+
+          return {
+            id: entry.id,
+            date: entry.date,
+            amountMinor: entry.amountMinor,
+            accountId: entry.accountId,
+            accountName: source?.name ?? 'Unknown account',
+            accountType: source?.type ?? null,
+            toAccountId: destinationId ?? '',
+            toAccountName: destination?.name ?? 'Unknown account',
+            toAccountType: destination?.type ?? null,
+          };
+        });
+      });
+    },
+
+    async addTransfer(input) {
+      return db.transaction(
+        'rw',
+        db.accounts,
+        db.entries,
+        async () => {
+          await requireTransferFields(input);
+
+          const entry: Entry = {
+            id: crypto.randomUUID(),
+            kind: 'transfer',
+            date: input.date,
+            amountMinor: input.amountMinor,
+            accountId: input.accountId,
+            toAccountId: input.toAccountId,
+          };
+
+          return insertEntry(entry);
+        },
+      );
     },
 
     async getEntry(id) {
