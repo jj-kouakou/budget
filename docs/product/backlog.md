@@ -17,7 +17,7 @@ The app replaces the spreadsheet that gets abandoned in week three.
 | 5 | Compare with last month | See last month's category totals beside this month's. | Done — deployed 2026-11-11 at https://jj-kouakou.github.io/budget/ |
 | 8 | Record transfers | Move money between their own accounts, including paying a credit card, without counting it as spending. | Done — deployed 2026-11-12 at https://jj-kouakou.github.io/budget/ |
 | 7 | Record income | Record money coming in, categorized, and see or correct it without inflating spending. | Done — built and reviewed 2026-11-12 |
-| 6 | Track account balances | Enter opening balances and see what each account holds or owes. | Backlog |
+| 6 | Track account balances | Enter opening balances and see what each account holds or owes. | In progress — scope: `docs/product/slices/slice-06-scope.md` |
 
 ## Why this order
 
@@ -146,6 +146,14 @@ The app replaces the spreadsheet that gets abandoned in week three.
   transfers → income → balances.** Each slice still depends only on what is
   before it. The correction is that balances depend on the movements that make
   an account's history complete, not just on accounts and expenses existing.
+- **The 2026-11-12 slice-6 scope gate re-checked the order and kept slice 6
+  (balances) next.** No reordering. The ledger now records spending, income,
+  and transfers, so a balance can be truthful; balances are the last
+  user-visible gap and the last slice the vision names. Slice 7 is built and
+  reviewed but not yet released, so merge and deploy it before shipping slice
+  6: the live app must hold income before a balance can include it. Slice 5's
+  real-data comparison check is still pending until December 2026; it does not
+  reorder anything. Scope: `docs/product/slices/slice-06-scope.md`.
 
 ## Out of scope
 
