@@ -1,8 +1,13 @@
 import { useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import type { AccountType } from '../../domain/types';
+import type { AccountType, Settings } from '../../domain/types';
 import { monthOf, todayLocalDate } from '../../domain/calendar';
-import type { Ledger, LedgerErrorCode } from '../../data/ledger';
+import { formatAmount } from '../../domain/money';
+import type {
+  AccountBalanceListItem,
+  Ledger,
+  LedgerErrorCode,
+} from '../../data/ledger';
 import { LedgerError } from '../../data/ledger';
 import { ACCOUNT_TYPE_LABELS } from '../labels';
 import { navigate } from '../router';
@@ -20,6 +25,33 @@ function accountErrorMessage(code: LedgerErrorCode): string {
   }
 }
 
+function balanceText(
+  row: AccountBalanceListItem,
+  settings: Settings,
+): string {
+  const formatted = (amountMinor: number) =>
+    formatAmount(
+      amountMinor,
+      settings.currency,
+      settings.currencyExponent,
+    );
+
+  if (row.type === 'credit') {
+    if (row.balanceMinor < 0) {
+      return `${formatted(-row.balanceMinor)} owed`;
+    }
+    if (row.balanceMinor === 0) {
+      return `${formatted(0)} owed`;
+    }
+    return `${formatted(row.balanceMinor)} in credit`;
+  }
+
+  if (row.balanceMinor < 0) {
+    return `${formatted(row.balanceMinor)} overdrawn`;
+  }
+  return formatted(row.balanceMinor);
+}
+
 type RowEditor =
   | {
       kind: 'rename';
@@ -34,7 +66,11 @@ type RowEditor =
     };
 
 export function AccountsScreen({ ledger }: { ledger: Ledger }) {
-  const accounts = useLiveQuery(() => ledger.listAccounts(), [ledger]);
+  const balances = useLiveQuery(
+    () => ledger.listAccountBalances(),
+    [ledger],
+  );
+  const settings = useLiveQuery(() => ledger.getSettings(), [ledger]);
   const [name, setName] = useState('');
   const [type, setType] = useState<AccountType>('checking');
   const [submitting, setSubmitting] = useState(false);
@@ -45,7 +81,7 @@ export function AccountsScreen({ ledger }: { ledger: Ledger }) {
   const [rowBusy, setRowBusy] = useState(false);
   const rowBusyRef = useRef(false);
 
-  if (accounts === undefined) {
+  if (balances === undefined || settings === undefined) {
     return <p>Loading…</p>;
   }
 
@@ -117,7 +153,7 @@ export function AccountsScreen({ ledger }: { ledger: Ledger }) {
     <section>
       <h1>Accounts</h1>
 
-      {accounts.length === 0 ? (
+      {balances.length === 0 ? (
         <p className="hint">
           Add the accounts you spend from. You can start without a balance.
         </p>
@@ -130,7 +166,7 @@ export function AccountsScreen({ ledger }: { ledger: Ledger }) {
       ) : null}
 
       {rowEditor?.kind === 'rename' &&
-      !accounts.some((account) => account.id === rowEditor.accountId) ? (
+      !balances.some((account) => account.id === rowEditor.accountId) ? (
         <form
           onSubmit={saveRename}
           onKeyDown={(event) => {
@@ -168,10 +204,10 @@ export function AccountsScreen({ ledger }: { ledger: Ledger }) {
       ) : null}
 
       <ul className="account-list">
-        {accounts.map((account) => (
-          <li key={account.id}>
+        {balances.map((row) => (
+          <li key={row.id}>
             {rowEditor?.kind === 'rename' &&
-            rowEditor.accountId === account.id ? (
+            rowEditor.accountId === row.id ? (
               <form
                 onSubmit={saveRename}
                 onKeyDown={(event) => {
@@ -181,7 +217,7 @@ export function AccountsScreen({ ledger }: { ledger: Ledger }) {
                 }}
               >
                 <input
-                  aria-label={`Rename ${account.name}`}
+                  aria-label={`Rename ${row.name}`}
                   value={rowEditor.draft}
                   maxLength={60}
                   onChange={(event) => {
@@ -205,13 +241,16 @@ export function AccountsScreen({ ledger }: { ledger: Ledger }) {
               </form>
             ) : (
               <>
-                <span className="account-name">{account.name}</span>
+                <span className="account-name">{row.name}</span>
                 <span className="account-type">
-                  {ACCOUNT_TYPE_LABELS[account.type]}
+                  {ACCOUNT_TYPE_LABELS[row.type]}
+                </span>
+                <span className="account-balance">
+                  {balanceText(row, settings)}
                 </span>
                 <button
                   type="button"
-                  onClick={() => startRename(account.id, account.name)}
+                  onClick={() => startRename(row.id, row.name)}
                 >
                   Rename
                 </button>
@@ -256,7 +295,7 @@ export function AccountsScreen({ ledger }: { ledger: Ledger }) {
         </button>
       </form>
 
-      {accounts.length > 0 ? (
+      {balances.length > 0 ? (
         <div className="actions">
           <button
             type="button"

@@ -188,6 +188,10 @@ select {
   color: #475569;
 }
 
+.account-balance {
+  font-variant-numeric: tabular-nums;
+}
+
 .chip-group {
   display: flex;
   flex-wrap: wrap;
