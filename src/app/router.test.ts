@@ -58,6 +58,24 @@ describe('parseHash', () => {
     ['#/transfers/a/b', { name: 'home', month: '2026-11' }],
     ['#/transfers/%E0%A4%A', { name: 'home', month: '2026-11' }],
     ['#/transfers/abc%2Fdef', { name: 'transfer', entryId: 'abc/def' }],
+    ['#/income', { name: 'income' }],
+    ['#/income?x=1', { name: 'income' }],
+    ['#/income/new', { name: 'add-income' }],
+    ['#/income/new?x=1', { name: 'add-income' }],
+    ['#/income/new/', { name: 'home', month: '2026-11' }],
+    ['#/income/', { name: 'home', month: '2026-11' }],
+    ['#/income//', { name: 'home', month: '2026-11' }],
+    ['#/income/abc', { name: 'income-entry', entryId: 'abc' }],
+    [
+      '#/income/abc?m=2026-11',
+      { name: 'income-entry', entryId: 'abc' },
+    ],
+    ['#/income/a/b', { name: 'home', month: '2026-11' }],
+    ['#/income/%E0%A4%A', { name: 'home', month: '2026-11' }],
+    [
+      '#/income/abc%2Fdef',
+      { name: 'income-entry', entryId: 'abc/def' },
+    ],
     ['#/nope', { name: 'home', month: '2026-11' }],
     ['#/add/', { name: 'home', month: '2026-11' }],
     ['#//', { name: 'home', month: '2026-11' }],
@@ -90,6 +108,10 @@ describe('routeToHash', () => {
     expect(routeToHash({ name: 'transfer', entryId: '3f1c-abc' })).toBe(
       '#/transfers/3f1c-abc',
     );
+    expect(routeToHash({ name: 'income' })).toBe('#/income');
+    expect(routeToHash({ name: 'add-income' })).toBe('#/income/new');
+    expect(routeToHash({ name: 'income-entry', entryId: '3f1c-abc' }))
+      .toBe('#/income/3f1c-abc');
   });
 
   it('round-trips a category id containing reserved characters', () => {
@@ -118,6 +140,21 @@ describe('routeToHash', () => {
     };
 
     expect(parseHash(routeToHash(route), '2026-11-02')).toEqual(route);
+  });
+
+  it('round-trips an income id containing reserved characters', () => {
+    const route = {
+      name: 'income-entry' as const,
+      entryId: 'income &? #/space',
+    };
+
+    expect(parseHash(routeToHash(route), '2026-11-02')).toEqual(route);
+  });
+
+  it('never parses the add hash as an income id', () => {
+    expect(parseHash('#/income/new', '2026-11-02')).toEqual({
+      name: 'add-income',
+    });
   });
 
   it('never parses the add hash as a transfer id', () => {

@@ -16,7 +16,10 @@ export type Route =
   | { name: 'entry'; entryId: string }
   | { name: 'transfers' }
   | { name: 'add-transfer' }
-  | { name: 'transfer'; entryId: string };
+  | { name: 'transfer'; entryId: string }
+  | { name: 'income' }
+  | { name: 'add-income' }
+  | { name: 'income-entry'; entryId: string };
 
 export function parseHash(hash: string, today?: LocalDate): Route {
   const withoutHash = hash.startsWith('#') ? hash.slice(1) : hash;
@@ -42,6 +45,12 @@ export function parseHash(hash: string, today?: LocalDate): Route {
   }
   if (path === '/transfers/new') {
     return { name: 'add-transfer' };
+  }
+  if (path === '/income') {
+    return { name: 'income' };
+  }
+  if (path === '/income/new') {
+    return { name: 'add-income' };
   }
 
   const requestedMonth = new URLSearchParams(query).get('m');
@@ -93,6 +102,23 @@ export function parseHash(hash: string, today?: LocalDate): Route {
     return { name: 'transfer', entryId };
   }
 
+  if (path.startsWith('/income/')) {
+    const raw = path.slice('/income/'.length);
+    if (raw === '' || raw.includes('/')) {
+      return { name: 'home', month: currentMonth };
+    }
+    let entryId: string;
+    try {
+      entryId = decodeURIComponent(raw);
+    } catch {
+      return { name: 'home', month: currentMonth };
+    }
+    if (entryId === '') {
+      return { name: 'home', month: currentMonth };
+    }
+    return { name: 'income-entry', entryId };
+  }
+
   return { name: 'home', month };
 }
 
@@ -118,6 +144,12 @@ export function routeToHash(route: Route): string {
       return '#/transfers/new';
     case 'transfer':
       return `#/transfers/${encodeURIComponent(route.entryId)}`;
+    case 'income':
+      return '#/income';
+    case 'add-income':
+      return '#/income/new';
+    case 'income-entry':
+      return `#/income/${encodeURIComponent(route.entryId)}`;
   }
 }
 

@@ -10,10 +10,10 @@ import { formatAmount, formatAmountInput, parseAmount } from '../../domain/money
 import type { Ledger } from '../../data/ledger';
 import { LedgerError, UNCATEGORIZED_CATEGORY_ID } from '../../data/ledger';
 import {
-  ExpenseFields,
-  expenseFieldErrors,
-  type ExpenseFieldErrors,
-} from '../expenseForm';
+  CategorizedEntryFields,
+  categorizedEntryFieldErrors,
+  type CategorizedEntryFieldErrors,
+} from '../categorizedEntryForm';
 import { navigate } from '../router';
 
 function EntryNotFound() {
@@ -112,8 +112,8 @@ function EntryForm({
   const [categoryId, setCategoryId] = useState<string | null>(storedCategoryId);
   const [accountId, setAccountId] = useState<string | null>(storedAccountId);
   const [date, setDate] = useState(entry.date);
-  const [errors, setErrors] = useState<ExpenseFieldErrors>(() => {
-    const initial: ExpenseFieldErrors = {};
+  const [errors, setErrors] = useState<CategorizedEntryFieldErrors>(() => {
+    const initial: CategorizedEntryFieldErrors = {};
     if (storedCategoryId === null) {
       initial.category = 'That category no longer exists. Choose another.';
     }
@@ -136,7 +136,7 @@ function EntryForm({
     }
   }, [confirmingDelete]);
 
-  function clearError(field: keyof ExpenseFieldErrors) {
+  function clearError(field: keyof CategorizedEntryFieldErrors) {
     setErrors((current) =>
       current[field] === undefined
         ? current
@@ -151,7 +151,7 @@ function EntryForm({
     }
 
     const amountMinor = parseAmount(amountText, settings.currencyExponent);
-    const nextErrors: ExpenseFieldErrors = {};
+    const nextErrors: CategorizedEntryFieldErrors = {};
     if (amountMinor === null || amountMinor <= 0) {
       nextErrors.amount = 'Enter an amount greater than zero.';
     }
@@ -202,7 +202,7 @@ function EntryForm({
         setGone(true);
       } else if (error instanceof LedgerError) {
         setErrors(
-          expenseFieldErrors(error.code) ?? {
+          categorizedEntryFieldErrors(error.code) ?? {
             form: 'Could not save the changes. Try again.',
           },
         );
@@ -269,7 +269,7 @@ function EntryForm({
     <section>
       <h1>Correct expense</h1>
       <form onSubmit={submit}>
-        <ExpenseFields
+        <CategorizedEntryFields
           idPrefix="entry"
           amountText={amountText}
           onAmountChange={setAmountText}
