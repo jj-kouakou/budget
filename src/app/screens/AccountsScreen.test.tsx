@@ -733,6 +733,160 @@ describe('AccountsScreen starting point', () => {
   });
 });
 
+describe('AccountsScreen add starting point', () => {
+  it('adds an account with a starting point and shows its balance', async () => {
+    const user = userEvent.setup();
+    renderScreen();
+
+    await user.type(await screen.findByLabelText('Account name'), 'Visa');
+    await user.selectOptions(screen.getByLabelText('Account type'), 'credit');
+    await user.type(
+      screen.getByLabelText('Starting point (optional)'),
+      '240.00',
+    );
+    await user.click(screen.getByRole('button', { name: 'Add account' }));
+
+    const row = await screen.findByRole('listitem');
+    expect(
+      within(row).getByText('Visa', { selector: '.account-name' }),
+    ).toBeInTheDocument();
+    expect(
+      within(row).getByText('Credit card', { selector: '.account-type' }),
+    ).toBeInTheDocument();
+    expect(
+      within(row).getByText(`${formatAmount(24000, 'CAD', 2)} owed`, {
+        selector: '.account-balance',
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        'No starting point set. The balance is the sum of recorded movements.',
+      ),
+    ).not.toBeInTheDocument();
+    expect(await db.entries.toArray()).toEqual([
+      expect.objectContaining({
+        kind: 'opening',
+        amountMinor: -24000,
+      }),
+    ]);
+  });
+
+  it('adds an account with an explicit zero starting point', async () => {
+    const user = userEvent.setup();
+    renderScreen();
+
+    await user.type(await screen.findByLabelText('Account name'), 'Checking');
+    await user.type(
+      screen.getByLabelText('Starting point (optional)'),
+      '0.00',
+    );
+    await user.click(screen.getByRole('button', { name: 'Add account' }));
+
+    const row = await screen.findByRole('listitem');
+    expect(
+      within(row).getByText(formatAmount(0, 'CAD', 2), {
+        selector: '.account-balance',
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        'No starting point set. The balance is the sum of recorded movements.',
+      ),
+    ).not.toBeInTheDocument();
+    expect(await db.entries.toArray()).toEqual([
+      expect.objectContaining({ kind: 'opening', amountMinor: 0 }),
+    ]);
+  });
+
+  it('rejects an invalid add-form opening without writing', async () => {
+    const user = userEvent.setup();
+    renderScreen();
+
+    await user.type(await screen.findByLabelText('Account name'), 'Checking');
+    await user.type(
+      screen.getByLabelText('Starting point (optional)'),
+      'abc',
+    );
+    await user.click(screen.getByRole('button', { name: 'Add account' }));
+
+    expect(
+      await screen.findByText('Enter a valid starting amount.'),
+    ).toBeInTheDocument();
+    expect(await db.accounts.count()).toBe(0);
+    expect(await db.entries.count()).toBe(0);
+  });
+
+  it('treats an empty opening as no entry', async () => {
+    const user = userEvent.setup();
+    renderScreen();
+
+    await user.type(await screen.findByLabelText('Account name'), 'Checking');
+    await user.click(screen.getByRole('button', { name: 'Add account' }));
+
+    await screen.findByRole('listitem');
+    expect(await db.accounts.count()).toBe(1);
+    expect(await db.entries.count()).toBe(0);
+    expect(
+      screen.getByText(
+        'No starting point set. The balance is the sum of recorded movements.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('updates the hint with the type and converts a credit opening', async () => {
+    const user = userEvent.setup();
+    renderScreen();
+
+    const type = await screen.findByLabelText('Account type');
+    expect(
+      screen.getByText(
+        'What the account held before you started logging. Use a minus if it was overdrawn.',
+      ),
+    ).toBeInTheDocument();
+    await user.selectOptions(type, 'credit');
+    expect(
+      screen.getByText(
+        'What the card owed before you started logging. Use a minus if it was in credit.',
+      ),
+    ).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText('Account name'), 'Visa');
+    await user.type(
+      screen.getByLabelText('Starting point (optional)'),
+      '60.00',
+    );
+    await user.click(screen.getByRole('button', { name: 'Add account' }));
+
+    expect(await db.entries.toArray()).toEqual([
+      expect.objectContaining({
+        kind: 'opening',
+        amountMinor: -6000,
+      }),
+    ]);
+    expect(
+      await screen.findByText(`${formatAmount(6000, 'CAD', 2)} owed`, {
+        selector: '.account-balance',
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it('uses the new zero-account copy and keeps the actions', async () => {
+    renderScreen();
+
+    expect(
+      await screen.findByText(
+        'Add the accounts you spend from. You can set a starting point now or later.',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Restore from backup' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Start logging' }),
+    ).not.toBeInTheDocument();
+  });
+});
+
 describe('AccountsScreen restore entry', () => {
   it('navigates to the backup screen with zero accounts', async () => {
     const user = userEvent.setup();

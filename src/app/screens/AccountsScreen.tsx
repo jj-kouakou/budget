@@ -103,6 +103,8 @@ export function AccountsScreen({ ledger }: { ledger: Ledger }) {
   const [type, setType] = useState<AccountType>('checking');
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [openingText, setOpeningText] = useState('');
+  const [openingError, setOpeningError] = useState<string | null>(null);
   const busyRef = useRef(false);
   const [rowEditor, setRowEditor] = useState<RowEditor | null>(null);
   const [rowError, setRowError] = useState<string | null>(null);
@@ -133,16 +135,37 @@ export function AccountsScreen({ ledger }: { ledger: Ledger }) {
     if (busyRef.current) {
       return;
     }
+    setFormError(null);
+    setOpeningError(null);
+
+    let openingBalanceMinor: number | undefined;
+    if (openingText.trim() !== '') {
+      const parsed = parseSignedAmount(openingText, currencyExponent);
+      if (parsed === null) {
+        setOpeningError('Enter a valid starting amount.');
+        return;
+      }
+      openingBalanceMinor = ledgerSignedAmount(type, parsed);
+    }
+
     busyRef.current = true;
     setSubmitting(true);
-    setFormError(null);
     try {
-      await ledger.addAccount({ name, type });
+      await ledger.addAccount(
+        openingBalanceMinor === undefined
+          ? { name, type }
+          : { name, type, openingBalanceMinor },
+      );
       setName('');
       setType('checking');
+      setOpeningText('');
     } catch (error) {
       if (error instanceof LedgerError) {
-        setFormError(accountErrorMessage(error.code));
+        if (error.code === 'invalid-opening-amount') {
+          setOpeningError(accountErrorMessage(error.code));
+        } else {
+          setFormError(accountErrorMessage(error.code));
+        }
       } else {
         setFormError('Could not save the account. Try again.');
       }
@@ -279,7 +302,8 @@ export function AccountsScreen({ ledger }: { ledger: Ledger }) {
 
       {balances.length === 0 ? (
         <p className="hint">
-          Add the accounts you spend from. You can start without a balance.
+          Add the accounts you spend from. You can set a starting point now or
+          later.
         </p>
       ) : null}
 
@@ -486,6 +510,37 @@ export function AccountsScreen({ ledger }: { ledger: Ledger }) {
             <option value="savings">Savings</option>
             <option value="credit">Credit card</option>
           </select>
+        </div>
+        <div className="field">
+          <label htmlFor="account-opening">Starting point (optional)</label>
+          <p id="account-opening-hint" className="hint">
+            {openingHint(type)}
+          </p>
+          <input
+            id="account-opening"
+            type="text"
+            inputMode="decimal"
+            autoComplete="off"
+            value={openingText}
+            aria-describedby={
+              openingError
+                ? 'account-opening-hint account-opening-error'
+                : 'account-opening-hint'
+            }
+            onChange={(event) => {
+              setOpeningText(event.target.value);
+              setOpeningError(null);
+            }}
+          />
+          {openingError ? (
+            <p
+              id="account-opening-error"
+              role="alert"
+              className="field-error"
+            >
+              {openingError}
+            </p>
+          ) : null}
         </div>
         {formError ? (
           <p role="alert" className="form-error">
