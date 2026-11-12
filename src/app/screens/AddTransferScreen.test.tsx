@@ -261,6 +261,7 @@ describe('AddTransferScreen', () => {
     await renderForm();
 
     await user.type(screen.getByLabelText('Amount'), '10');
+    await selectAccount('To account', 'Visa · Credit card');
     await db.accounts.delete(visa.id);
     await waitFor(() =>
       expect(
