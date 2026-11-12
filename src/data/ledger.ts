@@ -13,6 +13,7 @@ import {
   addMonths,
   isValidLocalDate,
   isValidMonthKey,
+  todayLocalDate,
 } from '../domain/calendar';
 import { byCodeUnitId } from '../domain/backup';
 import type { BackupData } from '../domain/backup';
@@ -22,6 +23,7 @@ import { STARTER_CATEGORIES } from './seed';
 export interface AddAccountInput {
   name: string;
   type: AccountType;
+  openingBalanceMinor?: number;
 }
 
 export interface AccountBalanceListItem {
@@ -148,7 +150,8 @@ export type LedgerErrorCode =
   | 'duplicate-category-name'
   | 'archived-category'
   | 'unknown-to-account'
-  | 'same-transfer-account';
+  | 'same-transfer-account'
+  | 'invalid-opening-amount';
 
 export class LedgerError extends Error {
   readonly name = 'LedgerError';
@@ -294,6 +297,15 @@ export function createLedger(db: BudgetDatabase): Ledger {
   async function insertEntry(entry: Entry): Promise<Entry> {
     await db.entries.add(entry);
     return entry;
+  }
+
+  function openingDateFor(account: Account): LocalDate {
+    const created = new Date(account.createdAt);
+    if (Number.isNaN(created.getTime())) {
+      return todayLocalDate();
+    }
+    const date = todayLocalDate(created);
+    return isValidLocalDate(date) ? date : todayLocalDate();
   }
 
   async function entriesOfKindNewestFirst(
@@ -449,6 +461,20 @@ export function createLedger(db: BudgetDatabase): Ledger {
           'Choose a valid account type.',
         );
       }
+      if (
+        input.openingBalanceMinor !== undefined &&
+        !Number.isSafeInteger(input.openingBalanceMinor)
+      ) {
+        throw new LedgerError(
+          'invalid-opening-amount',
+          'Enter a valid starting amount.',
+        );
+      }
+
+      const openingBalanceMinor =
+        input.openingBalanceMinor === 0
+          ? 0
+          : input.openingBalanceMinor;
 
       const account: Account = {
         id: crypto.randomUUID(),
@@ -457,8 +483,17 @@ export function createLedger(db: BudgetDatabase): Ledger {
         createdAt: new Date().toISOString(),
       };
 
-      await db.transaction('rw', db.accounts, async () => {
+      await db.transaction('rw', db.accounts, db.entries, async () => {
         await db.accounts.add(account);
+        if (openingBalanceMinor !== undefined) {
+          await insertEntry({
+            id: crypto.randomUUID(),
+            kind: 'opening',
+            date: openingDateFor(account),
+            amountMinor: openingBalanceMinor,
+            accountId: account.id,
+          });
+        }
       });
 
       return account;

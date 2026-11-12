@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import type { Account, Entry } from '../domain/types';
+import type { Account, AccountType, Entry } from '../domain/types';
 import { BudgetDatabase, SCHEMA_VERSION } from './db';
 import {
   BACKUP_SCHEMA_VERSION,
@@ -8,7 +8,7 @@ import {
   serializeBackup,
 } from '../domain/backup';
 import type { BackupData } from '../domain/backup';
-import { MAX_MONTH, MIN_MONTH } from '../domain/calendar';
+import { MAX_MONTH, MIN_MONTH, todayLocalDate } from '../domain/calendar';
 import {
   LedgerError,
   UNCATEGORIZED_CATEGORY_ID,
@@ -4867,5 +4867,157 @@ describe('account balances', () => {
     expect(Object.is(rows[0]?.balanceMinor, 0)).toBe(true);
     expect(Object.is(rows[1]?.balanceMinor, 0)).toBe(true);
     expect(Object.is(rows[1]?.openingBalanceMinor, 0)).toBe(true);
+  });
+});
+
+describe('addAccount with an opening', () => {
+  async function setup() {
+    const db = openDatabase();
+    const ledger = createLedger(db);
+    await ledger.initialize();
+    return { db, ledger };
+  }
+
+  it('writes no entry when the opening is omitted', async () => {
+    const { db, ledger } = await setup();
+
+    const account = await ledger.addAccount({
+      name: 'Checking',
+      type: 'checking',
+    });
+
+    expect(await db.entries.count()).toBe(0);
+    expect(await ledger.listAccountBalances()).toEqual([
+      {
+        id: account.id,
+        name: 'Checking',
+        type: 'checking',
+        balanceMinor: 0,
+        openingBalanceMinor: 0,
+        hasOpeningBalance: false,
+      },
+    ]);
+  });
+
+  it.each([1200, 0, -500])(
+    'writes one opening of %s dated the creation local date',
+    async (amountMinor) => {
+      const { db, ledger } = await setup();
+
+      const account = await ledger.addAccount({
+        name: 'Checking',
+        type: 'checking',
+        openingBalanceMinor: amountMinor,
+      });
+
+      expect(await db.accounts.count()).toBe(1);
+      expect(await db.entries.toArray()).toEqual([
+        {
+          id: expect.any(String),
+          kind: 'opening',
+          date: todayLocalDate(new Date(account.createdAt)),
+          amountMinor,
+          accountId: account.id,
+        },
+      ]);
+    },
+  );
+
+  it('stores a credit opening as ledger-signed and reports it', async () => {
+    const { ledger } = await setup();
+
+    const account = await ledger.addAccount({
+      name: 'Visa',
+      type: 'credit',
+      openingBalanceMinor: -24000,
+    });
+
+    expect((await ledger.listAccountBalances())[0]).toMatchObject({
+      id: account.id,
+      balanceMinor: -24000,
+      openingBalanceMinor: -24000,
+      hasOpeningBalance: true,
+    });
+  });
+
+  it('normalizes a negative zero opening', async () => {
+    const { db, ledger } = await setup();
+
+    const account = await ledger.addAccount({
+      name: 'Checking',
+      type: 'checking',
+      openingBalanceMinor: -0,
+    });
+
+    const [entry] = await db.entries.toArray();
+    expect(entry?.accountId).toBe(account.id);
+    expect(Object.is(entry?.amountMinor, 0)).toBe(true);
+  });
+
+  it.each([NaN, Infinity, 1.5, Number.MAX_SAFE_INTEGER + 1])(
+    'rejects an opening of %s and writes nothing',
+    async (openingBalanceMinor) => {
+      const { db, ledger } = await setup();
+
+      const error = await ledger
+        .addAccount({
+          name: 'Checking',
+          type: 'checking',
+          openingBalanceMinor,
+        })
+        .catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(LedgerError);
+      expect(error).toMatchObject({ code: 'invalid-opening-amount' });
+      expect(await db.accounts.count()).toBe(0);
+      expect(await db.entries.count()).toBe(0);
+    },
+  );
+
+  it('checks the name and type before the opening', async () => {
+    const { ledger } = await setup();
+
+    await expect(
+      ledger.addAccount({
+        name: '',
+        type: 'checking',
+        openingBalanceMinor: NaN,
+      }),
+    ).rejects.toMatchObject({ code: 'invalid-name' });
+
+    await expect(
+      ledger.addAccount({
+        name: 'Checking',
+        type: 'bad' as AccountType,
+        openingBalanceMinor: NaN,
+      }),
+    ).rejects.toMatchObject({ code: 'invalid-account-type' });
+  });
+
+  it('returns the stored account with the same id and createdAt', async () => {
+    const { db, ledger } = await setup();
+
+    const account = await ledger.addAccount({
+      name: 'Checking',
+      type: 'checking',
+      openingBalanceMinor: 100,
+    });
+
+    expect(await db.accounts.get(account.id)).toEqual(account);
+  });
+
+  it('does not write settings.lastAccountId', async () => {
+    const { db, ledger } = await setup();
+    await db.settings.update('app', { lastAccountId: 'acct-existing' });
+
+    await ledger.addAccount({
+      name: 'Checking',
+      type: 'checking',
+      openingBalanceMinor: 100,
+    });
+
+    expect((await db.settings.get('app'))?.lastAccountId).toBe(
+      'acct-existing',
+    );
   });
 });
