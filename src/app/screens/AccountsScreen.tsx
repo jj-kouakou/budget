@@ -20,6 +20,19 @@ function accountErrorMessage(code: LedgerErrorCode): string {
   }
 }
 
+type RowEditor =
+  | {
+      kind: 'rename';
+      accountId: string;
+      accountName: string;
+      draft: string;
+    }
+  | {
+      kind: 'opening';
+      accountId: string;
+      draft: string;
+    };
+
 export function AccountsScreen({ ledger }: { ledger: Ledger }) {
   const accounts = useLiveQuery(() => ledger.listAccounts(), [ledger]);
   const [name, setName] = useState('');
@@ -27,12 +40,10 @@ export function AccountsScreen({ ledger }: { ledger: Ledger }) {
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const busyRef = useRef(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editingName, setEditingName] = useState('');
-  const [draftName, setDraftName] = useState('');
-  const [renaming, setRenaming] = useState(false);
-  const [renameError, setRenameError] = useState<string | null>(null);
-  const renamingRef = useRef(false);
+  const [rowEditor, setRowEditor] = useState<RowEditor | null>(null);
+  const [rowError, setRowError] = useState<string | null>(null);
+  const [rowBusy, setRowBusy] = useState(false);
+  const rowBusyRef = useRef(false);
 
   if (accounts === undefined) {
     return <p>Loading…</p>;
@@ -63,37 +74,42 @@ export function AccountsScreen({ ledger }: { ledger: Ledger }) {
   }
 
   function startRename(id: string, currentName: string) {
-    setEditingId(id);
-    setEditingName(currentName);
-    setDraftName(currentName);
-    setRenameError(null);
+    setRowEditor({
+      kind: 'rename',
+      accountId: id,
+      accountName: currentName,
+      draft: currentName,
+    });
+    setRowError(null);
   }
 
-  function cancelRename() {
-    setEditingId(null);
-    setRenameError(null);
+  function cancelRowEditor() {
+    setRowEditor(null);
+    setRowError(null);
   }
 
   async function saveRename(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (editingId === null || renamingRef.current) {
+    if (rowEditor?.kind !== 'rename' || rowBusyRef.current) {
       return;
     }
-    renamingRef.current = true;
-    setRenaming(true);
-    setRenameError(null);
+    const accountId = rowEditor.accountId;
+    const draft = rowEditor.draft;
+    rowBusyRef.current = true;
+    setRowBusy(true);
+    setRowError(null);
     try {
-      await ledger.renameAccount(editingId, draftName);
-      setEditingId(null);
+      await ledger.renameAccount(accountId, draft);
+      setRowEditor(null);
     } catch (error) {
       if (error instanceof LedgerError) {
-        setRenameError(accountErrorMessage(error.code));
+        setRowError(accountErrorMessage(error.code));
       } else {
-        setRenameError('Could not save the account. Try again.');
+        setRowError('Could not save the account. Try again.');
       }
     } finally {
-      renamingRef.current = false;
-      setRenaming(false);
+      rowBusyRef.current = false;
+      setRowBusy(false);
     }
   }
 
@@ -107,39 +123,44 @@ export function AccountsScreen({ ledger }: { ledger: Ledger }) {
         </p>
       ) : null}
 
-      {renameError ? (
+      {rowError ? (
         <p role="alert" className="form-error">
-          {renameError}
+          {rowError}
         </p>
       ) : null}
 
-      {editingId !== null &&
-      !accounts.some((account) => account.id === editingId) ? (
+      {rowEditor?.kind === 'rename' &&
+      !accounts.some((account) => account.id === rowEditor.accountId) ? (
         <form
           onSubmit={saveRename}
           onKeyDown={(event) => {
-            if (event.key === 'Escape') {
-              cancelRename();
+            if (event.key === 'Escape' && !rowBusy) {
+              cancelRowEditor();
             }
           }}
         >
           <div className="field">
-            <label htmlFor="stale-rename">Rename {editingName}</label>
+            <label htmlFor="stale-rename">Rename {rowEditor.accountName}</label>
             <input
               id="stale-rename"
-              value={draftName}
+              value={rowEditor.draft}
               maxLength={60}
               onChange={(event) => {
-                setDraftName(event.target.value);
-                setRenameError(null);
+                const draft = event.target.value;
+                setRowEditor((current) =>
+                  current?.kind === 'rename'
+                    ? { ...current, draft }
+                    : current,
+                );
+                setRowError(null);
               }}
             />
           </div>
           <div className="actions">
-            <button type="submit" disabled={renaming}>
+            <button type="submit" disabled={rowBusy}>
               Save
             </button>
-            <button type="button" onClick={cancelRename}>
+            <button type="button" onClick={cancelRowEditor}>
               Cancel
             </button>
           </div>
@@ -149,29 +170,35 @@ export function AccountsScreen({ ledger }: { ledger: Ledger }) {
       <ul className="account-list">
         {accounts.map((account) => (
           <li key={account.id}>
-            {editingId === account.id ? (
+            {rowEditor?.kind === 'rename' &&
+            rowEditor.accountId === account.id ? (
               <form
                 onSubmit={saveRename}
                 onKeyDown={(event) => {
-                  if (event.key === 'Escape') {
-                    cancelRename();
+                  if (event.key === 'Escape' && !rowBusy) {
+                    cancelRowEditor();
                   }
                 }}
               >
                 <input
                   aria-label={`Rename ${account.name}`}
-                  value={draftName}
+                  value={rowEditor.draft}
                   maxLength={60}
                   onChange={(event) => {
-                    setDraftName(event.target.value);
-                    setRenameError(null);
+                    const draft = event.target.value;
+                    setRowEditor((current) =>
+                      current?.kind === 'rename'
+                        ? { ...current, draft }
+                        : current,
+                    );
+                    setRowError(null);
                   }}
                 />
                 <div className="actions">
-                  <button type="submit" disabled={renaming}>
+                  <button type="submit" disabled={rowBusy}>
                     Save
                   </button>
-                  <button type="button" onClick={cancelRename}>
+                  <button type="button" onClick={cancelRowEditor}>
                     Cancel
                   </button>
                 </div>
