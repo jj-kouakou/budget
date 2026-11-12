@@ -153,6 +153,38 @@ describe('App', () => {
     ).toBeInTheDocument();
   });
 
+  it('renders the transfer editor from a stored transfer', async () => {
+    const checking = await ledger.addAccount({
+      name: 'Checking',
+      type: 'checking',
+    });
+    const visa = await ledger.addAccount({ name: 'Visa', type: 'credit' });
+    const entry = await ledger.addTransfer({
+      amountMinor: 24000,
+      accountId: checking.id,
+      toAccountId: visa.id,
+      date: '2026-11-02',
+    });
+    window.location.hash = `#/transfers/${entry.id}`;
+
+    render(<App ledger={ledger} />);
+
+    expect(
+      await screen.findByRole('heading', { name: 'Correct transfer' }),
+    ).toBeInTheDocument();
+  });
+
+  it('renders transfer not found for an unknown transfer id', async () => {
+    await ledger.addAccount({ name: 'Checking', type: 'checking' });
+    window.location.hash = '#/transfers/missing';
+
+    render(<App ledger={ledger} />);
+
+    expect(
+      await screen.findByRole('heading', { name: 'Transfer not found' }),
+    ).toBeInTheDocument();
+  });
+
   it('renders home for an unknown route without rewriting the hash', async () => {
     await ledger.addAccount({ name: 'Checking', type: 'checking' });
     window.location.hash = '#/nope';

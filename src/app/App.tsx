@@ -10,6 +10,7 @@ import { CategoriesScreen } from './screens/CategoriesScreen';
 import { CategoryEntriesScreen } from './screens/CategoryEntriesScreen';
 import { EntryEditorScreen } from './screens/EntryEditorScreen';
 import { HomeScreen } from './screens/HomeScreen';
+import { TransferEditorScreen } from './screens/TransferEditorScreen';
 import { TransfersScreen } from './screens/TransfersScreen';
 
 export function App({ ledger }: { ledger: Ledger }) {
@@ -82,5 +83,9 @@ export function App({ ledger }: { ledger: Ledger }) {
       return <TransfersScreen ledger={ledger} />;
     case 'add-transfer':
       return <AddTransferScreen ledger={ledger} />;
+    case 'transfer':
+      return (
+        <TransferEditorScreen ledger={ledger} entryId={route.entryId} />
+      );
   }
 }
