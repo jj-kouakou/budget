@@ -1,6 +1,6 @@
 import type { Account } from '../domain/types';
 import type { LedgerErrorCode } from '../data/ledger';
-import { ChoiceGroup } from './expenseForm';
+import { ChoiceGroup } from './choiceGroup';
 import { accountWithTypeLabel } from './labels';
 
 export interface TransferFieldErrors {

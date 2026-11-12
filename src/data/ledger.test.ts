@@ -3608,3 +3608,877 @@ describe('backup operations', () => {
     });
   });
 });
+
+describe('income record and list', () => {
+  async function setup() {
+    const db = openDatabase();
+    const ledger = createLedger(db);
+    await ledger.initialize();
+    const checking = await ledger.addAccount({
+      name: 'Checking',
+      type: 'checking',
+    });
+    const savings = await ledger.addAccount({
+      name: 'Savings',
+      type: 'savings',
+    });
+    const card = await ledger.addAccount({ name: 'Visa', type: 'credit' });
+    return { db, ledger, checking, savings, card };
+  }
+
+  async function addIncome(
+    ledger: Ledger,
+    overrides: Partial<{
+      amountMinor: number;
+      categoryId: string;
+      accountId: string;
+      date: string;
+    }> = {},
+    accountId = 'acct-default',
+  ) {
+    return ledger.addIncome({
+      amountMinor: 240000,
+      categoryId: 'cat_other',
+      accountId,
+      date: '2026-11-02',
+      ...overrides,
+    });
+  }
+
+  it('writes one income row without a destination account', async () => {
+    const { db, ledger, checking } = await setup();
+    await db.settings.update('app', { lastAccountId: checking.id });
+
+    const entry = await addIncome(ledger, {}, checking.id);
+
+    expect(entry).toMatchObject({
+      kind: 'income',
+      date: '2026-11-02',
+      amountMinor: 240000,
+      accountId: checking.id,
+      categoryId: 'cat_other',
+    });
+    expect(entry).not.toHaveProperty('toAccountId');
+    expect(await db.entries.get(entry.id)).toEqual(entry);
+    expect(await db.entries.count()).toBe(1);
+    expect((await db.settings.get('app'))?.lastAccountId).toBe(
+      checking.id,
+    );
+  });
+
+  it.each(['checking', 'savings', 'credit'] as const)(
+    'accepts a %s account',
+    async (type) => {
+      const { db, ledger } = await setup();
+      const account = await ledger.addAccount({ name: type, type });
+
+      await addIncome(ledger, {}, account.id);
+
+      expect(await db.entries.count()).toBe(1);
+    },
+  );
+
+  it.each([0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1])(
+    'rejects amount %s',
+    async (amountMinor) => {
+      const { db, ledger, checking } = await setup();
+
+      const error = await addIncome(
+        ledger,
+        { amountMinor },
+        checking.id,
+      ).catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(LedgerError);
+      expect(error).toMatchObject({ code: 'invalid-amount' });
+      expect(await db.entries.count()).toBe(0);
+    },
+  );
+
+  it.each(['', '2026-02-30', '02/11/2026'])(
+    'rejects date %j',
+    async (date) => {
+      const { db, ledger, checking } = await setup();
+
+      const error = await addIncome(
+        ledger,
+        { date },
+        checking.id,
+      ).catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(LedgerError);
+      expect(error).toMatchObject({ code: 'invalid-date' });
+      expect(await db.entries.count()).toBe(0);
+    },
+  );
+
+  it('rejects an unknown account and an unknown category', async () => {
+    const { db, ledger, checking } = await setup();
+
+    const accountError = await addIncome(
+      ledger,
+      { accountId: 'acct-missing' },
+      'acct-missing',
+    ).catch((caught: unknown) => caught);
+    expect(accountError).toMatchObject({ code: 'unknown-account' });
+
+
+    const categoryError = await addIncome(
+      ledger,
+      { categoryId: 'cat-missing' },
+      checking.id,
+    ).catch((caught: unknown) => caught);
+    expect(categoryError).toMatchObject({ code: 'unknown-category' });
+
+    expect(await db.entries.count()).toBe(0);
+  });
+
+  it('rejects an archived category', async () => {
+    const { db, ledger, checking } = await setup();
+    await ledger.setCategoryArchived('cat_other', true);
+
+    const error = await addIncome(
+      ledger,
+      {},
+      checking.id,
+    ).catch((caught: unknown) => caught);
+
+    expect(error).toMatchObject({ code: 'archived-category' });
+    expect(await db.entries.count()).toBe(0);
+  });
+
+  it('uses the documented validation precedence', async () => {
+    const { ledger, checking } = await setup();
+    await ledger.setCategoryArchived('cat_other', true);
+
+    await expect(
+      addIncome(
+        ledger,
+        {
+          amountMinor: 0,
+          date: '2026-02-30',
+          accountId: 'acct-missing',
+          categoryId: 'cat-missing',
+        },
+        'acct-missing',
+      ),
+    ).rejects.toMatchObject({ code: 'invalid-amount' });
+
+    await expect(
+      addIncome(
+        ledger,
+        { date: '2026-02-30', accountId: 'acct-missing' },
+        'acct-missing',
+      ),
+    ).rejects.toMatchObject({ code: 'invalid-date' });
+
+    await expect(
+      addIncome(ledger, { categoryId: 'cat-missing' }, 'acct-missing'),
+    ).rejects.toMatchObject({ code: 'unknown-account' });
+
+    await expect(
+      addIncome(ledger, {}, checking.id),
+    ).rejects.toMatchObject({ code: 'archived-category' });
+  });
+
+  it('keeps addExpense, addTransfer, and addIncome on one write path', async () => {
+    const { db, ledger, checking, card } = await setup();
+
+    await ledger.addExpense({
+      amountMinor: 100,
+      categoryId: 'cat_groceries',
+      accountId: checking.id,
+      date: '2026-11-02',
+    });
+    await ledger.addTransfer({
+      amountMinor: 200,
+      accountId: checking.id,
+      toAccountId: card.id,
+      date: '2026-11-02',
+    });
+    await addIncome(ledger, {}, checking.id);
+
+    expect(await db.entries.count()).toBe(3);
+  });
+
+  it('lists only income, joined and ordered newest first', async () => {
+    const { db, ledger, checking, card } = await setup();
+    await db.entries.bulkAdd([
+      {
+        id: 'a',
+        kind: 'income',
+        date: '2026-11-02',
+        amountMinor: 100,
+        accountId: checking.id,
+        categoryId: 'cat_other',
+      },
+      {
+        id: 'b',
+        kind: 'income',
+        date: '2026-11-02',
+        amountMinor: 200,
+        accountId: checking.id,
+        categoryId: 'cat_other',
+      },
+      {
+        id: 'c',
+        kind: 'income',
+        date: '2025-01-15',
+        amountMinor: 300,
+        accountId: card.id,
+        categoryId: 'cat_groceries',
+      },
+      {
+        id: 'expense',
+        kind: 'expense',
+        date: '2026-11-03',
+        amountMinor: 400,
+        accountId: checking.id,
+        categoryId: 'cat_groceries',
+      },
+      {
+        id: 'transfer',
+        kind: 'transfer',
+        date: '2026-11-04',
+        amountMinor: 500,
+        accountId: checking.id,
+        toAccountId: card.id,
+      },
+      {
+        id: 'opening',
+        kind: 'opening',
+        date: '2026-11-05',
+        amountMinor: 600,
+        accountId: checking.id,
+      },
+    ]);
+
+    const rows = await ledger.listIncome();
+
+    expect(rows.map((row) => row.id)).toEqual(['b', 'a', 'c']);
+    expect(rows[0]).toMatchObject({
+      categoryName: 'Other',
+      accountName: 'Checking',
+      accountType: 'checking',
+    });
+    expect(rows[2]).toMatchObject({
+      categoryName: 'Groceries',
+      accountName: 'Visa',
+      accountType: 'credit',
+    });
+    expect(rows[0]).not.toHaveProperty('categoryId');
+  });
+
+  it('degrades a missing category and a missing categoryId to Uncategorized', async () => {
+    const { db, ledger, checking } = await setup();
+    await db.entries.bulkAdd([
+      {
+        id: 'missing-category',
+        kind: 'income',
+        date: '2026-11-02',
+        amountMinor: 100,
+        accountId: checking.id,
+        categoryId: 'gone',
+      },
+      {
+        id: 'no-category',
+        kind: 'income',
+        date: '2026-11-01',
+        amountMinor: 200,
+        accountId: checking.id,
+      },
+    ]);
+
+    const rows = await ledger.listIncome();
+
+    expect(rows.map((row) => row.categoryName)).toEqual([
+      UNCATEGORIZED_LABEL,
+      UNCATEGORIZED_LABEL,
+    ]);
+  });
+
+  it('degrades a missing account without dropping the row', async () => {
+    const { db, ledger } = await setup();
+    await db.entries.add({
+      id: 'orphan',
+      kind: 'income',
+      date: '2026-11-02',
+      amountMinor: 100,
+      accountId: 'gone',
+      categoryId: 'cat_other',
+    });
+
+    expect(await ledger.listIncome()).toEqual([
+      {
+        id: 'orphan',
+        date: '2026-11-02',
+        amountMinor: 100,
+        categoryName: 'Other',
+        accountId: 'gone',
+        accountName: 'Unknown account',
+        accountType: null,
+      },
+    ]);
+  });
+
+  it('joins current labels without rewriting the entry', async () => {
+    const { db, ledger, checking } = await setup();
+    const entry = await addIncome(ledger, {}, checking.id);
+    await ledger.renameCategory('cat_other', 'Salary');
+    await ledger.renameAccount(checking.id, 'Everyday');
+
+    expect((await ledger.listIncome())[0]).toMatchObject({
+      categoryName: 'Salary',
+      accountName: 'Everyday',
+    });
+    expect(await db.entries.get(entry.id)).toEqual(entry);
+  });
+
+  it('keeps archived category labels and returns every month', async () => {
+    const { db, ledger, checking } = await setup();
+    await db.entries.bulkAdd([
+      {
+        id: 'a',
+        kind: 'income',
+        date: '2026-11-02',
+        amountMinor: 100,
+        accountId: checking.id,
+        categoryId: 'cat_other',
+      },
+      {
+        id: 'b',
+        kind: 'income',
+        date: '2025-01-15',
+        amountMinor: 200,
+        accountId: checking.id,
+        categoryId: 'cat_other',
+      },
+    ]);
+    await ledger.setCategoryArchived('cat_other', true);
+
+    const rows = await ledger.listIncome();
+
+    expect(rows.map((row) => row.categoryName)).toEqual(['Other', 'Other']);
+    expect(rows).toHaveLength(2);
+  });
+
+  it('returns [] for an empty table', async () => {
+    const { ledger } = await setup();
+    expect(await ledger.listIncome()).toEqual([]);
+  });
+});
+
+describe('income corrections', () => {
+  async function setup() {
+    const db = openDatabase();
+    const ledger = createLedger(db);
+    await ledger.initialize();
+    const checking = await ledger.addAccount({
+      name: 'Checking',
+      type: 'checking',
+    });
+    const savings = await ledger.addAccount({
+      name: 'Savings',
+      type: 'savings',
+    });
+    const entry = await ledger.addIncome({
+      amountMinor: 240000,
+      categoryId: 'cat_other',
+      accountId: checking.id,
+      date: '2026-11-02',
+    });
+    await db.settings.update('app', { lastAccountId: checking.id });
+    return { db, ledger, checking, savings, entry };
+  }
+
+  it('updates the four editable fields on one row', async () => {
+    const { db, ledger, checking, savings, entry } = await setup();
+
+    const updated = await ledger.updateIncome(entry.id, {
+      amountMinor: 250000,
+      categoryId: 'cat_groceries',
+      accountId: savings.id,
+      date: '2027-01-01',
+    });
+
+    expect(updated).toMatchObject({
+      id: entry.id,
+      kind: 'income',
+      amountMinor: 250000,
+      categoryId: 'cat_groceries',
+      accountId: savings.id,
+      date: '2027-01-01',
+    });
+    expect(await db.entries.count()).toBe(1);
+    expect(await db.entries.get(entry.id)).toEqual(updated);
+    expect(await ledger.listIncome()).toMatchObject([
+      {
+        id: entry.id,
+        amountMinor: 250000,
+        categoryName: 'Groceries',
+        accountName: 'Savings',
+        date: '2027-01-01',
+      },
+    ]);
+    expect((await db.settings.get('app'))?.lastAccountId).toBe(checking.id);
+  });
+
+  it('rejects a missing id and a non-income id before validation', async () => {
+    const { db, ledger, checking } = await setup();
+    await db.entries.add({
+      id: 'expense',
+      kind: 'expense',
+      date: '2026-11-02',
+      amountMinor: 100,
+      accountId: checking.id,
+      categoryId: 'cat_other',
+    });
+
+    await expect(
+      ledger.updateIncome('missing', {
+        amountMinor: 0,
+        categoryId: 'gone',
+        accountId: 'gone',
+        date: 'bad',
+      }),
+    ).rejects.toMatchObject({ code: 'unknown-entry' });
+
+    await expect(
+      ledger.updateIncome('expense', {
+        amountMinor: 100,
+        categoryId: 'cat_other',
+        accountId: checking.id,
+        date: '2026-11-02',
+      }),
+    ).rejects.toMatchObject({ code: 'unsupported-entry-kind' });
+  });
+
+  it('rejects invalid fields without changing the row', async () => {
+    const { db, ledger, entry } = await setup();
+    await ledger.setCategoryArchived('cat_transport', true);
+
+    await expect(
+      ledger.updateIncome(entry.id, {
+        amountMinor: 0,
+        categoryId: 'cat_transport',
+        accountId: entry.accountId,
+        date: entry.date,
+      }),
+    ).rejects.toMatchObject({ code: 'invalid-amount' });
+    await expect(
+      ledger.updateIncome(entry.id, {
+        amountMinor: 100,
+        categoryId: 'cat_transport',
+        accountId: entry.accountId,
+        date: '2026-02-30',
+      }),
+    ).rejects.toMatchObject({ code: 'invalid-date' });
+    await expect(
+      ledger.updateIncome(entry.id, {
+        amountMinor: 100,
+        categoryId: 'cat_transport',
+        accountId: 'gone',
+        date: '2026-11-02',
+      }),
+    ).rejects.toMatchObject({ code: 'unknown-account' });
+    await expect(
+      ledger.updateIncome(entry.id, {
+        amountMinor: 100,
+        categoryId: 'gone',
+        accountId: entry.accountId,
+        date: '2026-11-02',
+      }),
+    ).rejects.toMatchObject({ code: 'unknown-category' });
+    await expect(
+      ledger.updateIncome(entry.id, {
+        amountMinor: 100,
+        categoryId: 'cat_transport',
+        accountId: entry.accountId,
+        date: '2026-11-02',
+      }),
+    ).rejects.toMatchObject({ code: 'archived-category' });
+
+    expect(await db.entries.get(entry.id)).toEqual(entry);
+  });
+
+  it('keeps the stored archived category on correction', async () => {
+    const { db, ledger, entry } = await setup();
+    await ledger.setCategoryArchived('cat_other', true);
+
+    const updated = await ledger.updateIncome(entry.id, {
+      amountMinor: 999,
+      categoryId: 'cat_other',
+      accountId: entry.accountId,
+      date: entry.date,
+    });
+
+    expect(updated.categoryId).toBe('cat_other');
+    expect(await db.entries.get(entry.id)).toEqual(updated);
+  });
+
+  it('preserves a stray toAccountId', async () => {
+    const { db, ledger, checking } = await setup();
+    await db.entries.add({
+      id: 'stray',
+      kind: 'income',
+      date: '2026-11-02',
+      amountMinor: 100,
+      accountId: checking.id,
+      categoryId: 'cat_other',
+      toAccountId: 'stray-destination',
+    });
+
+    const updated = await ledger.updateIncome('stray', {
+      amountMinor: 200,
+      categoryId: 'cat_groceries',
+      accountId: checking.id,
+      date: '2026-11-03',
+    });
+
+    expect(updated).toMatchObject({
+      toAccountId: 'stray-destination',
+      amountMinor: 200,
+      categoryId: 'cat_groceries',
+      date: '2026-11-03',
+    });
+    expect((await db.entries.get('stray'))?.toAccountId).toBe(
+      'stray-destination',
+    );
+  });
+
+  it('moves the row when the date changes', async () => {
+    const { db, ledger, checking, entry } = await setup();
+    await db.entries.add({
+      id: 'later',
+      kind: 'income',
+      date: '2027-01-01',
+      amountMinor: 100,
+      accountId: checking.id,
+      categoryId: 'cat_other',
+    });
+
+    await ledger.updateIncome(entry.id, {
+      amountMinor: entry.amountMinor,
+      categoryId: entry.categoryId ?? 'cat_other',
+      accountId: entry.accountId,
+      date: '2027-02-01',
+    });
+
+    expect((await ledger.listIncome()).map((row) => row.id)).toEqual([
+      entry.id,
+      'later',
+    ]);
+  });
+
+  it('deletes one row and returns the snapshot', async () => {
+    const { db, ledger, entry } = await setup();
+
+    const removed = await ledger.deleteIncome(entry.id);
+
+    expect(removed).toEqual(entry);
+    expect(await db.entries.count()).toBe(0);
+    expect(await ledger.listIncome()).toEqual([]);
+  });
+
+  it('rejects deleting a missing id or a non-income row', async () => {
+    const { db, ledger, checking } = await setup();
+    await db.entries.add({
+      id: 'expense',
+      kind: 'expense',
+      date: '2026-11-02',
+      amountMinor: 100,
+      accountId: checking.id,
+      categoryId: 'cat_other',
+    });
+
+    await expect(ledger.deleteIncome('missing')).rejects.toMatchObject({
+      code: 'unknown-entry',
+    });
+    await expect(ledger.deleteIncome('expense')).rejects.toMatchObject({
+      code: 'unsupported-entry-kind',
+    });
+    expect(await db.entries.count()).toBe(2);
+  });
+});
+
+describe('income spending invariants', () => {
+  async function setup() {
+    const db = openDatabase();
+    const ledger = createLedger(db);
+    await ledger.initialize();
+    const checking = await ledger.addAccount({
+      name: 'Checking',
+      type: 'checking',
+    });
+    return { db, ledger, checking };
+  }
+
+  it('leaves the current month summary unchanged', async () => {
+    const { ledger, checking } = await setup();
+    await ledger.addExpense({
+      amountMinor: 1000,
+      categoryId: 'cat_groceries',
+      accountId: checking.id,
+      date: '2026-11-02',
+    });
+    const before = await ledger.monthSummary('2026-11');
+
+    await ledger.addIncome({
+      amountMinor: 240000,
+      categoryId: 'cat_other',
+      accountId: checking.id,
+      date: '2026-11-03',
+    });
+
+    expect(await ledger.monthSummary('2026-11')).toEqual(before);
+  });
+
+  it('leaves the previous-month comparison untouched', async () => {
+    const { ledger, checking } = await setup();
+    await ledger.addExpense({
+      amountMinor: 1000,
+      categoryId: 'cat_groceries',
+      accountId: checking.id,
+      date: '2026-11-02',
+    });
+    const before = await ledger.monthSummary('2026-11');
+
+    await ledger.addIncome({
+      amountMinor: 240000,
+      categoryId: 'cat_other',
+      accountId: checking.id,
+      date: '2026-10-03',
+    });
+
+    const after = await ledger.monthSummary('2026-11');
+    expect(after).toEqual(before);
+    expect(after.previousMonthHasSpending).toBe(false);
+  });
+
+  it('keeps income out of an earlier month and category entries', async () => {
+    const { ledger, checking } = await setup();
+    await ledger.addExpense({
+      amountMinor: 1000,
+      categoryId: 'cat_groceries',
+      accountId: checking.id,
+      date: '2026-11-02',
+    });
+    const summaryBefore = await ledger.monthSummary('2026-11');
+    const entriesBefore = await ledger.categoryEntries(
+      '2026-11',
+      'cat_groceries',
+    );
+
+    await ledger.addIncome({
+      amountMinor: 240000,
+      categoryId: 'cat_groceries',
+      accountId: checking.id,
+      date: '2026-10-03',
+    });
+    await ledger.addIncome({
+      amountMinor: 300000,
+      categoryId: 'cat_groceries',
+      accountId: checking.id,
+      date: '2026-11-03',
+    });
+
+    expect(await ledger.monthSummary('2026-10')).toEqual({
+      month: '2026-10',
+      totalMinor: 0,
+      previousMonth: '2026-09',
+      previousMonthHasSpending: false,
+      rows: [],
+    });
+    expect(
+      await ledger.categoryEntries('2026-10', 'cat_groceries'),
+    ).toMatchObject({ totalMinor: 0, rows: [] });
+    expect(await ledger.monthSummary('2026-11')).toEqual(summaryBefore);
+    expect(
+      await ledger.categoryEntries('2026-11', 'cat_groceries'),
+    ).toEqual(entriesBefore);
+  });
+
+  it('leaves summaries unchanged after correction and removal', async () => {
+    const { ledger, checking } = await setup();
+    await ledger.addExpense({
+      amountMinor: 1000,
+      categoryId: 'cat_groceries',
+      accountId: checking.id,
+      date: '2026-11-02',
+    });
+    const currentBefore = await ledger.monthSummary('2026-11');
+    const previousBefore = await ledger.monthSummary('2026-12');
+    const income = await ledger.addIncome({
+      amountMinor: 240000,
+      categoryId: 'cat_other',
+      accountId: checking.id,
+      date: '2026-11-03',
+    });
+
+    await ledger.updateIncome(income.id, {
+      amountMinor: 1,
+      categoryId: 'cat_other',
+      accountId: checking.id,
+      date: '2027-01-01',
+    });
+    expect(await ledger.monthSummary('2026-11')).toEqual(currentBefore);
+    expect(await ledger.monthSummary('2026-12')).toEqual(previousBefore);
+
+    await ledger.deleteIncome(income.id);
+    expect(await ledger.monthSummary('2026-11')).toEqual(currentBefore);
+    expect(await ledger.monthSummary('2026-12')).toEqual(previousBefore);
+  });
+});
+
+describe('income backup round-trip', () => {
+  async function setup() {
+    const db = openDatabase();
+    const ledger = createLedger(db);
+    await ledger.initialize();
+    const checking = await ledger.addAccount({
+      name: 'Checking',
+      type: 'checking',
+    });
+    return { db, ledger, checking };
+  }
+
+  async function roundTrip(ledger: Ledger): Promise<Ledger> {
+    const data = await ledger.readBackupData();
+    const file = createBackupFile(
+      data,
+      new Date('2026-11-12T12:00:00.000Z'),
+    );
+    const parsed = parseBackupFile(serializeBackup(file));
+    const fresh = openDatabase();
+    const restored = createLedger(fresh);
+    await restored.restoreBackup(parsed.data);
+    return restored;
+  }
+
+  it('reproduces income exactly through a backup file', async () => {
+    const { ledger, checking } = await setup();
+    const entry = await ledger.addIncome({
+      amountMinor: 240000,
+      categoryId: 'cat_other',
+      accountId: checking.id,
+      date: '2026-11-02',
+    });
+
+    const data = await ledger.readBackupData();
+    expect(data.entries).toContainEqual(entry);
+
+    const restored = await roundTrip(ledger);
+
+    expect(await restored.listIncome()).toEqual([
+      {
+        id: entry.id,
+        date: '2026-11-02',
+        amountMinor: 240000,
+        categoryName: 'Other',
+        accountId: checking.id,
+        accountName: 'Checking',
+        accountType: 'checking',
+      },
+    ]);
+  });
+
+  it('restores an empty income list from a v1 file without income', async () => {
+    const { ledger } = await setup();
+
+    const restored = await roundTrip(ledger);
+
+    expect(await restored.listIncome()).toEqual([]);
+  });
+
+  it('lists a restored income without a category as Uncategorized', async () => {
+    const { ledger } = await setup();
+    const data = await ledger.readBackupData();
+    data.entries.push({
+      id: 'no-category',
+      kind: 'income',
+      date: '2026-11-02',
+      amountMinor: 100,
+      accountId: data.accounts[0]?.id ?? '',
+    });
+    const file = createBackupFile(
+      data,
+      new Date('2026-11-12T12:00:00.000Z'),
+    );
+    const fresh = openDatabase();
+    const restored = createLedger(fresh);
+    await restored.restoreBackup(
+      parseBackupFile(serializeBackup(file)).data,
+    );
+
+    expect((await restored.listIncome())[0]).toMatchObject({
+      categoryName: UNCATEGORIZED_LABEL,
+    });
+  });
+
+  it('round-trips a stray toAccountId and ignores it in spending', async () => {
+    const { ledger, checking } = await setup();
+    const data = await ledger.readBackupData();
+    data.entries.push({
+      id: 'stray-income',
+      kind: 'income',
+      date: '2026-11-02',
+      amountMinor: 500,
+      accountId: checking.id,
+      categoryId: 'cat_other',
+      toAccountId: 'somewhere',
+    });
+    const file = createBackupFile(
+      data,
+      new Date('2026-11-12T12:00:00.000Z'),
+    );
+    const fresh = openDatabase();
+    const restored = createLedger(fresh);
+    await restored.restoreBackup(
+      parseBackupFile(serializeBackup(file)).data,
+    );
+
+    expect((await restored.listIncome())[0]).toMatchObject({
+      id: 'stray-income',
+      amountMinor: 500,
+    });
+    expect((await restored.monthSummary('2026-11')).totalMinor).toBe(0);
+  });
+
+  it('lists a restored income whose account is missing', async () => {
+    const data: BackupData = {
+      accounts: [],
+      categories: [],
+      entries: [
+        {
+          id: 'orphan-income',
+          kind: 'income',
+          date: '2026-11-02',
+          amountMinor: 500,
+          accountId: 'gone',
+          categoryId: 'gone-category',
+        },
+      ],
+      settings: { currency: 'CAD', currencyExponent: 2 },
+    };
+    const fresh = openDatabase();
+    const restored = createLedger(fresh);
+    await restored.restoreBackup(data);
+
+    expect(await restored.listIncome()).toEqual([
+      {
+        id: 'orphan-income',
+        date: '2026-11-02',
+        amountMinor: 500,
+        categoryName: UNCATEGORIZED_LABEL,
+        accountId: 'gone',
+        accountName: 'Unknown account',
+        accountType: null,
+      },
+    ]);
+  });
+
+  it('keeps both schema versions at 1', () => {
+    expect(SCHEMA_VERSION).toBe(1);
+    expect(BACKUP_SCHEMA_VERSION).toBe(1);
+  });
+});

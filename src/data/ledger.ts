@@ -3,6 +3,7 @@ import type {
   AccountType,
   Category,
   Entry,
+  EntryKind,
   LocalDate,
   MonthKey,
   Settings,
@@ -23,7 +24,7 @@ export interface AddAccountInput {
   type: AccountType;
 }
 
-export interface ExpenseInput {
+export interface CategorizedEntryInput {
   amountMinor: number;
   categoryId: string;
   accountId: string;
@@ -47,6 +48,16 @@ export interface TransferListItem {
   toAccountId: string;
   toAccountName: string;
   toAccountType: AccountType | null;
+}
+
+export interface IncomeListItem {
+  id: string;
+  date: LocalDate;
+  amountMinor: number;
+  categoryName: string;
+  accountId: string;
+  accountName: string;
+  accountType: AccountType | null;
 }
 
 export interface EntryListItem {
@@ -151,13 +162,17 @@ export interface Ledger {
   addCategory(name: string): Promise<Category>;
   renameCategory(id: string, name: string): Promise<void>;
   setCategoryArchived(id: string, archived: boolean): Promise<void>;
-  addExpense(input: ExpenseInput): Promise<Entry>;
-  updateExpense(id: string, input: ExpenseInput): Promise<Entry>;
+  addExpense(input: CategorizedEntryInput): Promise<Entry>;
+  updateExpense(id: string, input: CategorizedEntryInput): Promise<Entry>;
   deleteExpense(id: string): Promise<Entry>;
   listTransfers(): Promise<TransferListItem[]>;
   addTransfer(input: TransferInput): Promise<Entry>;
   updateTransfer(id: string, input: TransferInput): Promise<Entry>;
   deleteTransfer(id: string): Promise<Entry>;
+  listIncome(): Promise<IncomeListItem[]>;
+  addIncome(input: CategorizedEntryInput): Promise<Entry>;
+  updateIncome(id: string, input: CategorizedEntryInput): Promise<Entry>;
+  deleteIncome(id: string): Promise<Entry>;
   getEntry(id: string): Promise<Entry | null>;
   categoryEntries(
     month: MonthKey,
@@ -219,8 +234,8 @@ export function createLedger(db: BudgetDatabase): Ledger {
     }
   }
 
-  async function requireExpenseFields(
-    input: ExpenseInput,
+  async function requireCategorizedEntryFields(
+    input: CategorizedEntryInput,
     options?: { allowArchivedCategoryId?: string },
   ): Promise<void> {
     if (!Number.isSafeInteger(input.amountMinor) || input.amountMinor <= 0) {
@@ -262,6 +277,19 @@ export function createLedger(db: BudgetDatabase): Ledger {
   async function insertEntry(entry: Entry): Promise<Entry> {
     await db.entries.add(entry);
     return entry;
+  }
+
+  async function entriesOfKindNewestFirst(
+    kind: EntryKind,
+  ): Promise<Entry[]> {
+    const entries = await db.entries.orderBy('date').reverse().toArray();
+    return entries
+      .filter((entry) => entry.kind === kind)
+      .sort(
+        (left, right) =>
+          right.date.localeCompare(left.date) ||
+          right.id.localeCompare(left.id),
+      );
   }
 
   async function requireTransferFields(
@@ -429,7 +457,7 @@ export function createLedger(db: BudgetDatabase): Ledger {
         db.entries,
         db.settings,
         async () => {
-          await requireExpenseFields(input);
+          await requireCategorizedEntryFields(input);
 
           const entry: Entry = {
             id: crypto.randomUUID(),
@@ -535,7 +563,7 @@ export function createLedger(db: BudgetDatabase): Ledger {
             );
           }
 
-          await requireExpenseFields(input, {
+          await requireCategorizedEntryFields(input, {
             allowArchivedCategoryId: existing.categoryId,
           });
 
@@ -586,16 +614,7 @@ export function createLedger(db: BudgetDatabase): Ledger {
 
     async listTransfers() {
       return db.transaction('r', db.entries, db.accounts, async () => {
-        const entries = await db.entries.orderBy('date').reverse().toArray();
-        const transfers = entries.filter(
-          (entry) => entry.kind === 'transfer',
-        );
-
-        transfers.sort(
-          (left, right) =>
-            right.date.localeCompare(left.date) ||
-            right.id.localeCompare(left.id),
-        );
+        const transfers = await entriesOfKindNewestFirst('transfer');
 
         const accountIds = [
           ...new Set(
@@ -721,6 +740,159 @@ export function createLedger(db: BudgetDatabase): Ledger {
           throw new LedgerError(
             'unsupported-entry-kind',
             'Only transfers can be corrected or removed.',
+          );
+        }
+
+        await db.entries.delete(id);
+        return existing;
+      });
+    },
+
+    async listIncome() {
+      return db.transaction(
+        'r',
+        db.entries,
+        db.accounts,
+        db.categories,
+        async () => {
+          const incomes = await entriesOfKindNewestFirst('income');
+
+          const accountIds = [
+            ...new Set(incomes.map((entry) => entry.accountId)),
+          ];
+          const categoryIds = [
+            ...new Set(
+              incomes.flatMap((entry) =>
+                entry.categoryId === undefined ? [] : [entry.categoryId],
+              ),
+            ),
+          ];
+
+          const accounts = await db.accounts.bulkGet(accountIds);
+          const categories = await db.categories.bulkGet(categoryIds);
+
+          const accountById = new Map<string, Account>();
+          accounts.forEach((account, index) => {
+            const accountId = accountIds[index];
+            if (account && accountId !== undefined) {
+              accountById.set(accountId, account);
+            }
+          });
+
+          const categoryById = new Map<string, Category>();
+          categories.forEach((category, index) => {
+            const categoryId = categoryIds[index];
+            if (category && categoryId !== undefined) {
+              categoryById.set(categoryId, category);
+            }
+          });
+
+          return incomes.map((entry) => {
+            const account = accountById.get(entry.accountId);
+            const category =
+              entry.categoryId === undefined
+                ? undefined
+                : categoryById.get(entry.categoryId);
+
+            return {
+              id: entry.id,
+              date: entry.date,
+              amountMinor: entry.amountMinor,
+              categoryName: category?.name ?? UNCATEGORIZED_LABEL,
+              accountId: entry.accountId,
+              accountName: account?.name ?? 'Unknown account',
+              accountType: account?.type ?? null,
+            };
+          });
+        },
+      );
+    },
+
+    async addIncome(input) {
+      return db.transaction(
+        'rw',
+        db.accounts,
+        db.categories,
+        db.entries,
+        async () => {
+          await requireCategorizedEntryFields(input);
+
+          const entry: Entry = {
+            id: crypto.randomUUID(),
+            kind: 'income',
+            date: input.date,
+            amountMinor: input.amountMinor,
+            accountId: input.accountId,
+            categoryId: input.categoryId,
+          };
+
+          return insertEntry(entry);
+        },
+      );
+    },
+
+    async updateIncome(id, input) {
+      return db.transaction(
+        'rw',
+        db.accounts,
+        db.categories,
+        db.entries,
+        async () => {
+          const existing = await db.entries.get(id);
+          if (!existing) {
+            throw new LedgerError(
+              'unknown-entry',
+              'That entry no longer exists.',
+            );
+          }
+          if (existing.kind !== 'income') {
+            throw new LedgerError(
+              'unsupported-entry-kind',
+              'Only income can be corrected or removed.',
+            );
+          }
+
+          await requireCategorizedEntryFields(input, {
+            allowArchivedCategoryId: existing.categoryId,
+          });
+
+          const updated = await db.entries.update(id, {
+            date: input.date,
+            amountMinor: input.amountMinor,
+            accountId: input.accountId,
+            categoryId: input.categoryId,
+          });
+          if (updated === 0) {
+            throw new LedgerError(
+              'unknown-entry',
+              'That entry no longer exists.',
+            );
+          }
+
+          return {
+            ...existing,
+            date: input.date,
+            amountMinor: input.amountMinor,
+            accountId: input.accountId,
+            categoryId: input.categoryId,
+          };
+        },
+      );
+    },
+
+    async deleteIncome(id) {
+      return db.transaction('rw', db.entries, async () => {
+        const existing = await db.entries.get(id);
+        if (!existing) {
+          throw new LedgerError(
+            'unknown-entry',
+            'That entry no longer exists.',
+          );
+        }
+        if (existing.kind !== 'income') {
+          throw new LedgerError(
+            'unsupported-entry-kind',
+            'Only income can be corrected or removed.',
           );
         }
 

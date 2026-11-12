@@ -1,8 +1,9 @@
 import type { Account, Category } from '../domain/types';
 import type { LedgerErrorCode } from '../data/ledger';
+import { ChoiceGroup } from './choiceGroup';
 import { accountWithTypeLabel } from './labels';
 
-export interface ExpenseFieldErrors {
+export interface CategorizedEntryFieldErrors {
   amount?: string;
   category?: string;
   account?: string;
@@ -10,9 +11,9 @@ export interface ExpenseFieldErrors {
   form?: string;
 }
 
-export function expenseFieldErrors(
+export function categorizedEntryFieldErrors(
   code: LedgerErrorCode,
-): ExpenseFieldErrors | null {
+): CategorizedEntryFieldErrors | null {
   switch (code) {
     case 'invalid-amount':
       return { amount: 'Enter an amount greater than zero.' };
@@ -29,46 +30,7 @@ export function expenseFieldErrors(
   }
 }
 
-export function ChoiceGroup({
-  legend,
-  options,
-  selectedId,
-  errorId,
-  error,
-  onSelect,
-}: {
-  legend: string;
-  options: { id: string; label: string }[];
-  selectedId: string | null;
-  errorId?: string;
-  error?: string;
-  onSelect: (id: string) => void;
-}) {
-  return (
-    <fieldset className="field" aria-describedby={errorId}>
-      <legend>{legend}</legend>
-      <div className="chip-group">
-        {options.map((option) => (
-          <button
-            key={option.id}
-            type="button"
-            aria-pressed={selectedId === option.id}
-            onClick={() => onSelect(option.id)}
-          >
-            {option.label}
-          </button>
-        ))}
-      </div>
-      {error ? (
-        <p id={errorId} className="field-error">
-          {error}
-        </p>
-      ) : null}
-    </fieldset>
-  );
-}
-
-export function ExpenseFields({
+export function CategorizedEntryFields({
   idPrefix,
   amountText,
   onAmountChange,
@@ -84,7 +46,7 @@ export function ExpenseFields({
   errors,
   onClearError,
 }: {
-  idPrefix: 'expense' | 'entry';
+  idPrefix: 'expense' | 'entry' | 'income';
   amountText: string;
   onAmountChange: (value: string) => void;
   categoryId: string | null;
@@ -96,8 +58,8 @@ export function ExpenseFields({
   accounts: Account[];
   categories: Category[];
   archivedCategoryId?: string;
-  errors: ExpenseFieldErrors;
-  onClearError: (field: keyof ExpenseFieldErrors) => void;
+  errors: CategorizedEntryFieldErrors;
+  onClearError: (field: keyof CategorizedEntryFieldErrors) => void;
 }) {
   return (
     <>

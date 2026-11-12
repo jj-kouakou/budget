@@ -10,10 +10,10 @@ import { parseAmount } from '../../domain/money';
 import type { Ledger } from '../../data/ledger';
 import { LedgerError } from '../../data/ledger';
 import {
-  ExpenseFields,
-  expenseFieldErrors,
-  type ExpenseFieldErrors,
-} from '../expenseForm';
+  CategorizedEntryFields,
+  categorizedEntryFieldErrors,
+  type CategorizedEntryFieldErrors,
+} from '../categorizedEntryForm';
 import { navigate } from '../router';
 
 export function AddExpenseScreen({ ledger }: { ledger: Ledger }) {
@@ -95,11 +95,11 @@ function AddExpenseForm({
       : (accounts[0]?.id ?? null);
   });
   const [date, setDate] = useState(() => todayLocalDate());
-  const [errors, setErrors] = useState<ExpenseFieldErrors>({});
+  const [errors, setErrors] = useState<CategorizedEntryFieldErrors>({});
   const [submitting, setSubmitting] = useState(false);
   const submittingRef = useRef(false);
 
-  function clearError(field: keyof ExpenseFieldErrors) {
+  function clearError(field: keyof CategorizedEntryFieldErrors) {
     setErrors((current) =>
       current[field] === undefined
         ? current
@@ -114,7 +114,7 @@ function AddExpenseForm({
     }
 
     const amountMinor = parseAmount(amountText, settings.currencyExponent);
-    const nextErrors: ExpenseFieldErrors = {};
+    const nextErrors: CategorizedEntryFieldErrors = {};
     if (amountMinor === null || amountMinor <= 0) {
       nextErrors.amount = 'Enter an amount greater than zero.';
     }
@@ -152,7 +152,7 @@ function AddExpenseForm({
     } catch (error) {
       if (error instanceof LedgerError) {
         setErrors(
-          expenseFieldErrors(error.code) ?? {
+          categorizedEntryFieldErrors(error.code) ?? {
             form: 'Could not save the expense. Try again.',
           },
         );
@@ -169,7 +169,7 @@ function AddExpenseForm({
     <section>
       <h1>Add expense</h1>
       <form onSubmit={submit}>
-        <ExpenseFields
+        <CategorizedEntryFields
           idPrefix="expense"
           amountText={amountText}
           onAmountChange={setAmountText}

@@ -4,12 +4,15 @@ import type { Ledger } from '../data/ledger';
 import { navigate, useHashRoute } from './router';
 import { AccountsScreen } from './screens/AccountsScreen';
 import { AddExpenseScreen } from './screens/AddExpenseScreen';
+import { AddIncomeScreen } from './screens/AddIncomeScreen';
 import { AddTransferScreen } from './screens/AddTransferScreen';
 import { BackupScreen } from './screens/BackupScreen';
 import { CategoriesScreen } from './screens/CategoriesScreen';
 import { CategoryEntriesScreen } from './screens/CategoryEntriesScreen';
 import { EntryEditorScreen } from './screens/EntryEditorScreen';
 import { HomeScreen } from './screens/HomeScreen';
+import { IncomeEditorScreen } from './screens/IncomeEditorScreen';
+import { IncomeScreen } from './screens/IncomeScreen';
 import { TransferEditorScreen } from './screens/TransferEditorScreen';
 import { TransfersScreen } from './screens/TransfersScreen';
 
@@ -86,6 +89,14 @@ export function App({ ledger }: { ledger: Ledger }) {
     case 'transfer':
       return (
         <TransferEditorScreen ledger={ledger} entryId={route.entryId} />
+      );
+    case 'income':
+      return <IncomeScreen ledger={ledger} />;
+    case 'add-income':
+      return <AddIncomeScreen ledger={ledger} />;
+    case 'income-entry':
+      return (
+        <IncomeEditorScreen ledger={ledger} entryId={route.entryId} />
       );
   }
 }

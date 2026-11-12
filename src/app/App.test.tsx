@@ -364,4 +364,112 @@ describe('App backup and restore', () => {
     ).toBeInTheDocument();
     expect(window.location.hash).toBe('#/accounts');
   });
+
+  it('renders the income list from #/income with one account', async () => {
+    await ledger.addAccount({ name: 'Checking', type: 'checking' });
+    window.location.hash = '#/income';
+
+    render(<App ledger={ledger} />);
+
+    expect(
+      await screen.findByRole('heading', { name: 'Income' }),
+    ).toBeInTheDocument();
+  });
+
+  it('renders the add income form from #/income/new with one account', async () => {
+    await ledger.addAccount({ name: 'Checking', type: 'checking' });
+    window.location.hash = '#/income/new';
+
+    render(<App ledger={ledger} />);
+
+    expect(
+      await screen.findByRole('heading', { name: 'Add income' }),
+    ).toBeInTheDocument();
+  });
+
+  it('renders the income editor from a stored income', async () => {
+    const checking = await ledger.addAccount({
+      name: 'Checking',
+      type: 'checking',
+    });
+    const entry = await ledger.addIncome({
+      amountMinor: 240000,
+      categoryId: 'cat_other',
+      accountId: checking.id,
+      date: '2026-11-02',
+    });
+    window.location.hash = `#/income/${entry.id}`;
+
+    render(<App ledger={ledger} />);
+
+    expect(
+      await screen.findByRole('heading', { name: 'Correct income' }),
+    ).toBeInTheDocument();
+  });
+
+  it('renders Income not found for an unknown income id', async () => {
+    await ledger.addAccount({ name: 'Checking', type: 'checking' });
+    window.location.hash = '#/income/missing';
+
+    render(<App ledger={ledger} />);
+
+    expect(
+      await screen.findByRole('heading', { name: 'Income not found' }),
+    ).toBeInTheDocument();
+  });
+
+  it.each([
+    '#/income',
+    '#/income/new',
+    '#/income/entry-1',
+  ])('forces accounts from a zero-account %s deep link', async (hash) => {
+    window.location.hash = hash;
+
+    render(<App ledger={ledger} />);
+
+    expect(
+      await screen.findByRole('heading', { name: 'Accounts' }),
+    ).toBeInTheDocument();
+    expect(window.location.hash).toBe('#/accounts');
+  });
+
+  it('shows the empty income list after removing the last income', async () => {
+    const user = userEvent.setup();
+    const checking = await ledger.addAccount({
+      name: 'Checking',
+      type: 'checking',
+    });
+    const entry = await ledger.addIncome({
+      amountMinor: 240000,
+      categoryId: 'cat_other',
+      accountId: checking.id,
+      date: '2026-11-02',
+    });
+    window.location.hash = `#/income/${entry.id}`;
+
+    render(<App ledger={ledger} />);
+    await screen.findByRole('heading', { name: 'Correct income' });
+    await user.click(screen.getByRole('button', { name: 'Remove income' }));
+    await user.click(screen.getByRole('button', { name: 'Remove' }));
+
+    expect(
+      await screen.findByRole('heading', { name: 'Income' }),
+    ).toBeInTheDocument();
+    expect(await screen.findByText('No income yet.')).toBeInTheDocument();
+  });
+
+  it('navigates home to the income list from the Income button', async () => {
+    const user = userEvent.setup();
+    await ledger.addAccount({ name: 'Checking', type: 'checking' });
+    window.location.hash = '#/';
+
+    render(<App ledger={ledger} />);
+    await screen.findByRole('heading', { name: formatMonth(monthOf(todayLocalDate())) });
+    await user.click(screen.getByRole('button', { name: 'Income' }));
+
+    expect(
+      await screen.findByRole('heading', { name: 'Income' }),
+    ).toBeInTheDocument();
+    expect(window.location.hash).toBe('#/income');
+  });
 });
