@@ -2749,6 +2749,305 @@ describe('transfers', () => {
   });
 });
 
+describe('transfer corrections', () => {
+  async function setup() {
+    const db = openDatabase();
+    const ledger = createLedger(db);
+    await ledger.initialize();
+    const checking = await ledger.addAccount({
+      name: 'Checking',
+      type: 'checking',
+    });
+    const savings = await ledger.addAccount({
+      name: 'Savings',
+      type: 'savings',
+    });
+    const card = await ledger.addAccount({ name: 'Visa', type: 'credit' });
+    return { db, ledger, checking, savings, card };
+  }
+
+  it('updates the four editable fields on the one row', async () => {
+    const { db, ledger, checking, savings, card } = await setup();
+    const entry = await ledger.addTransfer({
+      amountMinor: 100,
+      accountId: checking.id,
+      toAccountId: card.id,
+      date: '2026-11-02',
+    });
+
+    const updated = await ledger.updateTransfer(entry.id, {
+      amountMinor: 2500,
+      accountId: savings.id,
+      toAccountId: checking.id,
+      date: '2025-01-15',
+    });
+
+    expect(updated).toMatchObject({
+      id: entry.id,
+      kind: 'transfer',
+      amountMinor: 2500,
+      accountId: savings.id,
+      toAccountId: checking.id,
+      date: '2025-01-15',
+    });
+    expect(await db.entries.count()).toBe(1);
+    expect(await db.entries.get(entry.id)).toEqual(updated);
+    expect(await ledger.listTransfers()).toEqual([
+      {
+        id: entry.id,
+        date: '2025-01-15',
+        amountMinor: 2500,
+        accountId: savings.id,
+        accountName: 'Savings',
+        accountType: 'savings',
+        toAccountId: checking.id,
+        toAccountName: 'Checking',
+        toAccountType: 'checking',
+      },
+    ]);
+  });
+
+  it('rejects a missing id and a non-transfer id', async () => {
+    const { db, ledger, checking, card } = await setup();
+    const expense = await ledger.addExpense({
+      amountMinor: 100,
+      categoryId: 'cat_groceries',
+      accountId: checking.id,
+      date: '2026-11-02',
+    });
+
+    const missing = await ledger
+      .updateTransfer('missing', {
+        amountMinor: 100,
+        accountId: checking.id,
+        toAccountId: card.id,
+        date: '2026-11-02',
+      })
+      .catch((caught: unknown) => caught);
+    const wrongKind = await ledger
+      .updateTransfer(expense.id, {
+        amountMinor: 100,
+        accountId: checking.id,
+        toAccountId: card.id,
+        date: '2026-11-02',
+      })
+      .catch((caught: unknown) => caught);
+
+    expect(missing).toMatchObject({ code: 'unknown-entry' });
+    expect(wrongKind).toMatchObject({ code: 'unsupported-entry-kind' });
+    expect(await db.entries.get(expense.id)).toEqual(expense);
+    expect(await db.entries.count()).toBe(1);
+  });
+
+  it('rejects the same account, invalid amount, invalid date, and unknown accounts', async () => {
+    const { db, ledger, checking, card } = await setup();
+    const entry = await ledger.addTransfer({
+      amountMinor: 100,
+      accountId: checking.id,
+      toAccountId: card.id,
+      date: '2026-11-02',
+    });
+
+    const sameAccount = await ledger
+      .updateTransfer(entry.id, {
+        amountMinor: 100,
+        accountId: checking.id,
+        toAccountId: checking.id,
+        date: '2026-11-02',
+      })
+      .catch((caught: unknown) => caught);
+    const invalidAmount = await ledger
+      .updateTransfer(entry.id, {
+        amountMinor: 0,
+        accountId: checking.id,
+        toAccountId: card.id,
+        date: '2026-11-02',
+      })
+      .catch((caught: unknown) => caught);
+    const invalidDate = await ledger
+      .updateTransfer(entry.id, {
+        amountMinor: 100,
+        accountId: checking.id,
+        toAccountId: card.id,
+        date: '2026-02-30',
+      })
+      .catch((caught: unknown) => caught);
+    const unknownSource = await ledger
+      .updateTransfer(entry.id, {
+        amountMinor: 100,
+        accountId: 'missing',
+        toAccountId: card.id,
+        date: '2026-11-02',
+      })
+      .catch((caught: unknown) => caught);
+    const unknownDestination = await ledger
+      .updateTransfer(entry.id, {
+        amountMinor: 100,
+        accountId: checking.id,
+        toAccountId: 'missing',
+        date: '2026-11-02',
+      })
+      .catch((caught: unknown) => caught);
+
+    expect(sameAccount).toMatchObject({ code: 'same-transfer-account' });
+    expect(invalidAmount).toMatchObject({ code: 'invalid-amount' });
+    expect(invalidDate).toMatchObject({ code: 'invalid-date' });
+    expect(unknownSource).toMatchObject({ code: 'unknown-account' });
+    expect(unknownDestination).toMatchObject({
+      code: 'unknown-to-account',
+    });
+    expect(await db.entries.count()).toBe(1);
+    expect(await db.entries.get(entry.id)).toEqual(entry);
+  });
+
+  it('does not change settings.lastAccountId', async () => {
+    const { db, ledger, checking, card } = await setup();
+    const entry = await ledger.addTransfer({
+      amountMinor: 100,
+      accountId: checking.id,
+      toAccountId: card.id,
+      date: '2026-11-02',
+    });
+    await db.settings.update('app', { lastAccountId: card.id });
+
+    await ledger.updateTransfer(entry.id, {
+      amountMinor: 200,
+      accountId: checking.id,
+      toAccountId: card.id,
+      date: '2026-11-03',
+    });
+
+    expect((await db.settings.get('app'))?.lastAccountId).toBe(card.id);
+  });
+
+  it('preserves a stray categoryId on a restored transfer', async () => {
+    const { db, ledger, checking, card } = await setup();
+    await db.entries.add({
+      id: 'restored',
+      kind: 'transfer',
+      date: '2026-11-02',
+      amountMinor: 100,
+      accountId: checking.id,
+      toAccountId: card.id,
+      categoryId: 'cat_groceries',
+    });
+
+    const updated = await ledger.updateTransfer('restored', {
+      amountMinor: 200,
+      accountId: checking.id,
+      toAccountId: card.id,
+      date: '2026-11-03',
+    });
+
+    expect(updated).toMatchObject({
+      id: 'restored',
+      kind: 'transfer',
+      amountMinor: 200,
+      date: '2026-11-03',
+      categoryId: 'cat_groceries',
+    });
+    expect(await db.entries.get('restored')).toEqual(updated);
+  });
+
+  it('moves a row in listTransfers order when its date changes', async () => {
+    const { ledger, checking, card } = await setup();
+    const first = await ledger.addTransfer({
+      amountMinor: 100,
+      accountId: checking.id,
+      toAccountId: card.id,
+      date: '2026-11-02',
+    });
+    const second = await ledger.addTransfer({
+      amountMinor: 200,
+      accountId: checking.id,
+      toAccountId: card.id,
+      date: '2026-11-03',
+    });
+
+    await ledger.updateTransfer(first.id, {
+      amountMinor: 100,
+      accountId: checking.id,
+      toAccountId: card.id,
+      date: '2026-11-04',
+    });
+
+    expect((await ledger.listTransfers()).map((row) => row.id)).toEqual([
+      first.id,
+      second.id,
+    ]);
+  });
+
+  it('removes exactly one row and returns its snapshot', async () => {
+    const { db, ledger, checking, card } = await setup();
+    const entry = await ledger.addTransfer({
+      amountMinor: 100,
+      accountId: checking.id,
+      toAccountId: card.id,
+      date: '2026-11-02',
+    });
+    await ledger.addTransfer({
+      amountMinor: 200,
+      accountId: checking.id,
+      toAccountId: card.id,
+      date: '2026-11-03',
+    });
+
+    const removed = await ledger.deleteTransfer(entry.id);
+
+    expect(removed).toEqual(entry);
+    expect(await db.entries.get(entry.id)).toBeUndefined();
+    expect((await ledger.listTransfers()).map((row) => row.amountMinor)).toEqual([
+      200,
+    ]);
+  });
+
+  it('rejects deleting a missing id and a non-transfer id', async () => {
+    const { db, ledger, checking } = await setup();
+    const expense = await ledger.addExpense({
+      amountMinor: 100,
+      categoryId: 'cat_groceries',
+      accountId: checking.id,
+      date: '2026-11-02',
+    });
+
+    const missing = await ledger
+      .deleteTransfer('missing')
+      .catch((caught: unknown) => caught);
+    const wrongKind = await ledger
+      .deleteTransfer(expense.id)
+      .catch((caught: unknown) => caught);
+
+    expect(missing).toMatchObject({ code: 'unknown-entry' });
+    expect(wrongKind).toMatchObject({ code: 'unsupported-entry-kind' });
+    expect(await db.entries.get(expense.id)).toEqual(expense);
+  });
+
+  it('leaves spending reads unchanged', async () => {
+    const { ledger, checking, card } = await setup();
+    await ledger.addExpense({
+      amountMinor: 1000,
+      categoryId: 'cat_groceries',
+      accountId: checking.id,
+      date: '2026-11-02',
+    });
+    const entry = await ledger.addTransfer({
+      amountMinor: 500,
+      accountId: checking.id,
+      toAccountId: card.id,
+      date: '2026-11-02',
+    });
+    const summary = await ledger.monthSummary('2026-11');
+    const entries = await ledger.categoryEntries('2026-11', 'cat_groceries');
+
+    await ledger.deleteTransfer(entry.id);
+
+    expect(await ledger.monthSummary('2026-11')).toEqual(summary);
+    expect(await ledger.categoryEntries('2026-11', 'cat_groceries')).toEqual(
+      entries,
+    );
+  });
+});
+
 describe('backup operations', () => {
   function backupData() {
     return {

@@ -156,6 +156,8 @@ export interface Ledger {
   deleteExpense(id: string): Promise<Entry>;
   listTransfers(): Promise<TransferListItem[]>;
   addTransfer(input: TransferInput): Promise<Entry>;
+  updateTransfer(id: string, input: TransferInput): Promise<Entry>;
+  deleteTransfer(id: string): Promise<Entry>;
   getEntry(id: string): Promise<Entry | null>;
   categoryEntries(
     month: MonthKey,
@@ -658,6 +660,73 @@ export function createLedger(db: BudgetDatabase): Ledger {
           return insertEntry(entry);
         },
       );
+    },
+
+    async updateTransfer(id, input) {
+      return db.transaction(
+        'rw',
+        db.accounts,
+        db.entries,
+        async () => {
+          const existing = await db.entries.get(id);
+          if (!existing) {
+            throw new LedgerError(
+              'unknown-entry',
+              'That entry no longer exists.',
+            );
+          }
+          if (existing.kind !== 'transfer') {
+            throw new LedgerError(
+              'unsupported-entry-kind',
+              'Only transfers can be corrected or removed.',
+            );
+          }
+
+          await requireTransferFields(input);
+
+          const updated = await db.entries.update(id, {
+            date: input.date,
+            amountMinor: input.amountMinor,
+            accountId: input.accountId,
+            toAccountId: input.toAccountId,
+          });
+          if (updated === 0) {
+            throw new LedgerError(
+              'unknown-entry',
+              'That entry no longer exists.',
+            );
+          }
+
+          return {
+            ...existing,
+            date: input.date,
+            amountMinor: input.amountMinor,
+            accountId: input.accountId,
+            toAccountId: input.toAccountId,
+          };
+        },
+      );
+    },
+
+    async deleteTransfer(id) {
+      return db.transaction('rw', db.entries, async () => {
+        const existing = await db.entries.get(id);
+        if (!existing) {
+          throw new LedgerError(
+            'unknown-entry',
+            'That entry no longer exists.',
+          );
+        }
+        if (existing.kind !== 'transfer') {
+          throw new LedgerError(
+            'unsupported-entry-kind',
+            'Only transfers can be corrected or removed.',
+          );
+        }
+
+        await db.entries.delete(id);
+        return existing;
+      });
     },
 
     async getEntry(id) {
