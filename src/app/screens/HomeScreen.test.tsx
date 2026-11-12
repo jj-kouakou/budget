@@ -672,4 +672,53 @@ describe('HomeScreen storage warning', () => {
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Backup' })).toBeInTheDocument();
   });
+
+  it('keeps income out of the total, breakdown, and comparison', async () => {
+    await addExpense(2000, 'cat_groceries');
+    await ledger.addIncome({
+      amountMinor: 240000,
+      categoryId: 'cat_other',
+      accountId: checking.id,
+      date: '2026-11-03',
+    });
+    await ledger.addIncome({
+      amountMinor: 100000,
+      categoryId: 'cat_other',
+      accountId: checking.id,
+      date: '2026-10-03',
+    });
+    await ledger.addIncome({
+      amountMinor: 50000,
+      categoryId: 'cat_groceries',
+      accountId: checking.id,
+      date: '2026-11-04',
+    });
+
+    render(<HomeScreen ledger={ledger} month="2026-11" />);
+
+    await screen.findByText('Groceries');
+    expect(screen.getByText('Spent').closest('.spent')).toHaveTextContent(
+      money(2000),
+    );
+    expect(screen.getAllByRole('listitem')).toHaveLength(1);
+    expect(screen.getByText('Groceries')).toBeInTheDocument();
+    expect(screen.queryByText('Other')).not.toBeInTheDocument();
+    expect(screen.getByText(/No spending recorded/)).toBeInTheDocument();
+    expect(screen.queryByText(money(240000))).not.toBeInTheDocument();
+    expect(screen.queryByText(money(50000))).not.toBeInTheDocument();
+  });
+
+  it('shows an Income action first and navigates to the income list', async () => {
+    const user = userEvent.setup();
+    render(<HomeScreen ledger={ledger} month="2026-11" />);
+    await screen.findByText('No spending yet this month.');
+
+    const actions = screen.getByRole('button', { name: 'Income' })
+      .parentElement!;
+    expect(actions.firstElementChild).toHaveTextContent('Income');
+
+    await user.click(screen.getByRole('button', { name: 'Income' }));
+
+    expect(window.location.hash).toBe('#/income');
+  });
 });
