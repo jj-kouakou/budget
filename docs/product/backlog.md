@@ -15,9 +15,9 @@ The app replaces the spreadsheet that gets abandoned in week three.
 | 3 | Keep a backup | Export the ledger to a file and restore it; see when the last backup was made and whether the phone might discard the data. | Done — deployed 2026-11-11 at https://jj-kouakou.github.io/budget/ |
 | 4 | Manage categories | Add, rename, archive, and unarchive categories so the breakdown matches how they think about their money. | Done — deployed 2026-11-11 at https://jj-kouakou.github.io/budget/ |
 | 5 | Compare with last month | See last month's category totals beside this month's. | Done — deployed 2026-11-11 at https://jj-kouakou.github.io/budget/ |
-| 6 | Track account balances | Enter opening balances and see what each account holds or owes. | Backlog |
+| 8 | Record transfers | Move money between their own accounts, including paying a credit card, without counting it as spending. | In progress |
 | 7 | Record income | Record money coming in, categorized, without inflating spending. | Backlog |
-| 8 | Record transfers | Move money between their own accounts, including paying a credit card, without counting it as spending. | Backlog |
+| 6 | Track account balances | Enter opening balances and see what each account holds or owes. | Backlog |
 
 ## Why this order
 
@@ -66,27 +66,51 @@ The app replaces the spreadsheet that gets abandoned in week three.
   still slice 2. Two facts carry into the slice: a rename must change the
   label in both months, and archiving must not remove a category that still
   has spending.
-- **Slice 5 was completed on 2026-11-10; slice 6 is still the right next
-  slice.** Close-out re-checked the order and found no reason to change it.
+- **Slice 5 was completed on 2026-11-10; at that close-out, slice 6 was the
+  right next slice.** Close-out re-checked the order and found no reason to
+  change it then.
   The comparison changed no stored shape — `SCHEMA_VERSION` and
   `BACKUP_SCHEMA_VERSION` stay `1`, and no table, index, route, or write path
   changed — so it adds no migration or cleanup before balances. Comparing by
   category id and keeping archived categories with spending were both verified
   in the build, which is exactly what slice 6 needs when it reads the same
-  entries per account. Slice 6 remains next because balances are the first
+  entries per account. Slice 6 was then next because balances are the first
   supporting concept the vision names and it depends only on accounts and
-  entries, both already built. The release step is done: slices 3–5 were
+  entries, both already built. That dependency claim was incomplete — a
+  balance also depends on the movements recorded — and the 2026-11-11 gate
+  below corrects it. The release step is done: slices 3–5 were
   merged into `master` and deployed on 2026-11-11. The remaining fact is that
   slice 5's comparison cannot be validated against real data until December
   2026 at the earliest; that does not change the order.
+- **The 2026-11-11 scope gate re-checked the order and pulled slice 8 ahead
+  of slice 6.** Slice 6's promise — "see what each account holds or owes" —
+  cannot be met by expenses and an opening balance alone. The app can create
+  expenses only; income and transfers are not recordable, so a balance would
+  omit paychecks and card payments. That is the trust failure the vision warns
+  about, not a supporting-context gap. Transfers were pulled ahead of income
+  because a card payment has no correct home today: recorded as an expense it
+  inflates the month's spending, and omitted it leaves the ledger incomplete.
+  The vision's secondary success metric requires card payments as transfers,
+  and transfers need no income-category decision. Income follows, then
+  balances. This is a priority shift approved at the gate; slices 1–5 are
+  unchanged.
 - **The last-month comparison completes the headline, but it needs a month of
   data to mean anything.** It follows the trust-and-safety slices so the user
   has a reason to keep logging until there is a last month to compare.
-- **Balances, income, and transfers complete the supporting context.** The
-  vision is explicit that they are never the headline, and each depends on
-  accounts and entries already existing.
-- **Each slice depends only on slices before it.** The order is dependency
-  order, not preference order.
+- **Balances, income, and transfers complete the supporting context, but
+  balances are only as truthful as the movements recorded.** The vision is
+  explicit that they are never the headline. A balance is the sum of an
+  account's movements; with only expenses and an opening balance, a checking
+  balance omits paychecks and a card balance omits payments. Transfers and
+  income therefore land before balances. Transfers go first because a card
+  payment recorded as an expense inflates the headline, and the vision's
+  reconciliation metric explicitly requires card payments as transfers; income
+  follows because it completes the ledger and needs income categories settled;
+  balances come last, when the movements behind them exist.
+- **The remaining order is dependency order, corrected for completeness:
+  transfers → income → balances.** Each slice still depends only on what is
+  before it. The correction is that balances depend on the movements that make
+  an account's history complete, not just on accounts and expenses existing.
 
 ## Out of scope
 
