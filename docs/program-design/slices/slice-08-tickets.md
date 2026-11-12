@@ -7,9 +7,9 @@
   ADRs 0001/0005, `CONTEXT.md`.
 - **Branch:** `slice-08`, cut from `master` after the gate docs are committed.
   Slices 3–5 are merged and deployed as of 2026-11-11.
-- **Status:** ready for build. Not yet implemented. Boundary decisions 2, 3,
-  and 9 are flagged for confirmation before the first ticket; the rest are
-  recorded so the build does not re-litigate them.
+- **Status:** built and closed 2026-11-12. All seven tickets implemented
+  test-first and merged; the suite is green. The flagged boundary decisions
+  were confirmed by the build and are recorded below.
 
 Each ticket is one build session, test-first, and one commit when its tests
 pass. Every ticket leaves the suite green for the surface it has shipped.
@@ -101,6 +101,9 @@ the manual acceptance pass.
    the handoff's single ticket as a final wiring ticket blocked by 4–6, but
    the route contract must still land before the screens, so the split
    remains. Confirm this split is acceptable.
+   **Confirmed by the build:** ticket 3 edited only the router and its tests;
+   each screen ticket added its own `App` case, and `App` was not touched in
+   ticket 3.
 3. **Flagged — intermediate tickets are not standalone releases.** Ticket 4
    ships the list with Add and row buttons pointing at routes whose screens
    land in 5 and 6. Ticket 5 completes the core record-and-see moment but the
@@ -109,6 +112,8 @@ the manual acceptance pass.
    until ticket 7 passes. Alternative: merge 4–6 into one ticket, which is
    too large for a comfortable session. Confirm you accept intermediate
    commits that are not standalone releases.
+   **Confirmed by the build:** tickets 4–6 landed as intermediate commits on
+   `slice-08`; nothing was merged or deployed until ticket 7 passed.
 4. **Decided — `insertEntry` is the first step of ticket 1.** Spec §5.2. It is
    not a separate ticket; the existing `addExpense` tests prove the call-site
    switch is behaviour preserving.
@@ -125,13 +130,15 @@ the manual acceptance pass.
    you prefer no test-only ticket, fold §8.3 27–36 into tickets 1/2 and §8.5
    41 into ticket 4, and keep ticket 7 as manual verification only.
 8. **Decided — no ADR, glossary, schema, backup, settings, or close-out
-   ticket.** Spec §5.9 and §11. The north-star `fromAccountId` prose is
-   corrected at close-out or the next drift check, not here.
+   ticket.** Spec §5.9 and §11. The north-star `fromAccountId` prose was
+   corrected at close-out, not here.
 9. **Flagged — editor correction and removal stay in one ticket.** Ticket 6
    carries 16 screen cases, but removal is a small delta on the same
    component and shares seeding, stored values, and the not-found path. If
    the session runs long, split removal (confirmation, focus, delete, guards;
    Spec §8.5 35–37, 39–40) into 6b blocked by 6a. No other ticket changes.
+   **Confirmed by the build:** ticket 6 shipped correction and removal in one
+   session; no 6b was needed.
 
 ---
 
@@ -244,19 +251,19 @@ transfer history with both account sides joined. No UI changes.
 
 **Acceptance criteria**
 
-- [ ] `addTransfer` writes exactly one `entries` row with `kind: 'transfer'`,
+- [x] `addTransfer` writes exactly one `entries` row with `kind: 'transfer'`,
       the input amount/source/destination/date, no category, and returns it.
-- [ ] `requireTransferFields` enforces the five checks in the normative order;
+- [x] `requireTransferFields` enforces the five checks in the normative order;
       each failure throws the specified `LedgerErrorCode` and writes nothing.
-- [ ] `addTransfer` never writes `settings.lastAccountId`.
-- [ ] `insertEntry` is the only `entries.add` call on the add paths;
+- [x] `addTransfer` never writes `settings.lastAccountId`.
+- [x] `insertEntry` is the only `entries.add` call on the add paths;
       `addExpense` behaviour and all existing tests are unchanged.
-- [ ] `listTransfers` returns only transfers, newest first by date then id,
+- [x] `listTransfers` returns only transfers, newest first by date then id,
       joins both accounts, and degrades missing accounts without dropping the
       row.
-- [ ] A corrupt transfer with no `toAccountId` is returned, not dropped.
-- [ ] No schema, index, backup, or settings change.
-- [ ] `npm test` and `npm run typecheck` pass.
+- [x] A corrupt transfer with no `toAccountId` is returned, not dropped.
+- [x] No schema, index, backup, or settings change.
+- [x] `npm test` and `npm run typecheck` pass.
 
 ---
 
@@ -308,15 +315,15 @@ returning the removed snapshot. Both sides change together; removal is final.
 
 **Acceptance criteria**
 
-- [ ] `updateTransfer` reads and kind-checks before field validation, updates
+- [x] `updateTransfer` reads and kind-checks before field validation, updates
       exactly the four editable fields on one row, and never creates a second
       row.
-- [ ] A missing row between read and update yields `unknown-entry`.
-- [ ] A stray `categoryId` is preserved and never written by the app.
-- [ ] `deleteTransfer` removes the one row, returns the snapshot, and leaves
+- [x] A missing row between read and update yields `unknown-entry`.
+- [x] A stray `categoryId` is preserved and never written by the app.
+- [x] `deleteTransfer` removes the one row, returns the snapshot, and leaves
       no tombstone.
-- [ ] Both mutations leave `settings.lastAccountId` unchanged.
-- [ ] `npm test` and `npm run typecheck` pass.
+- [x] Both mutations leave `settings.lastAccountId` unchanged.
+- [x] `npm test` and `npm run typecheck` pass.
 
 ---
 
@@ -359,12 +366,12 @@ with the exact fallbacks in the spec. `App` is intentionally untouched.
 
 **Acceptance criteria**
 
-- [ ] The three routes parse exactly as Spec §6.1, including query strings,
+- [x] The three routes parse exactly as Spec §6.1, including query strings,
       trailing slashes, raw slashes, encoded slashes, and decode failure.
-- [ ] `routeToHash` is exhaustive and returns the three exact hashes.
-- [ ] Existing routes and their tests are unchanged.
-- [ ] `App` is not edited in this ticket.
-- [ ] `npm test` and `npm run typecheck` pass.
+- [x] `routeToHash` is exhaustive and returns the three exact hashes.
+- [x] Existing routes and their tests are unchanged.
+- [x] `App` is not edited in this ticket.
+- [x] `npm test` and `npm run typecheck` pass.
 
 ---
 
@@ -432,22 +439,22 @@ action opens the add route.
 
 **Acceptance criteria**
 
-- [ ] The list state precedence is exactly loading → needs-accounts → empty →
+- [x] The list state precedence is exactly loading → needs-accounts → empty →
       list; the warning replaces the empty state and existing rows still
       render.
-- [ ] Rows are in ledger order and are never sorted, filtered, merged, or
+- [x] Rows are in ledger order and are never sorted, filtered, merged, or
       summed by the UI.
-- [ ] Each row shows the date, both account labels, and the formatted amount;
+- [x] Each row shows the date, both account labels, and the formatted amount;
       the accessible name states direction, amount, and date.
-- [ ] Missing accounts render `Unknown account` and the row remains.
-- [ ] Empty and fewer-than-two-accounts states use the exact spec copy and
+- [x] Missing accounts render `Unknown account` and the row remains.
+- [x] Empty and fewer-than-two-accounts states use the exact spec copy and
       actions.
-- [ ] The home `Transfers` button is first in the actions row and present in
+- [x] The home `Transfers` button is first in the actions row and present in
       every state.
-- [ ] `accountWithTypeLabel` is shared with `ExpenseFields` with identical
+- [x] `accountWithTypeLabel` is shared with `ExpenseFields` with identical
       output; existing screen tests stay green.
-- [ ] The list does not scroll horizontally at 320px.
-- [ ] `npm test` and `npm run typecheck` pass.
+- [x] The list does not scroll horizontally at 320px.
+- [x] `npm test` and `npm run typecheck` pass.
 
 ---
 
@@ -506,21 +513,21 @@ instead of a form.
 
 **Acceptance criteria**
 
-- [ ] The fewer-than-two-accounts gate renders heading, warning, and Accounts
+- [x] The fewer-than-two-accounts gate renders heading, warning, and Accounts
       action with no form.
-- [ ] Defaults are exactly: source from valid `lastAccountId` else first
+- [x] Defaults are exactly: source from valid `lastAccountId` else first
       account; destination first different in `listAccounts()` order; date
       today; amount blank.
-- [ ] Changing one picker never changes the other; a same-account selection
+- [x] Changing one picker never changes the other; a same-account selection
       remains visible and is rejected on submit with the form-level error.
-- [ ] Amount, date, and account validation match Spec §6.6 and map ledger
+- [x] Amount, date, and account validation match Spec §6.6 and map ledger
       codes to the correct fields.
-- [ ] Saving writes exactly one row, navigates to the list, and does not
+- [x] Saving writes exactly one row, navigates to the list, and does not
       change `settings.lastAccountId`.
-- [ ] The double-submit guard allows one write and disables Save.
-- [ ] `TransferFields` is shared and ready for ticket 6; no second form
+- [x] The double-submit guard allows one write and disables Save.
+- [x] `TransferFields` is shared and ready for ticket 6; no second form
       convention is introduced.
-- [ ] `npm test` and `npm run typecheck` pass.
+- [x] `npm test` and `npm run typecheck` pass.
 
 ---
 
@@ -593,19 +600,19 @@ and block saving until corrected.
 
 **Acceptance criteria**
 
-- [ ] The editor seeds from the stored row; missing source/destination and a
+- [x] The editor seeds from the stored row; missing source/destination and a
       restored self-transfer start with the correct errors and block saving.
-- [ ] A correction updates the one row and both sides; no second row; the
+- [x] A correction updates the one row and both sides; no second row; the
       list reflects the change immediately.
-- [ ] A date correction moves the row in the list.
-- [ ] Back and Cancel leave the row unchanged.
-- [ ] Removal names the stored amount, date, and both account labels; focus
+- [x] A date correction moves the row in the list.
+- [x] Back and Cancel leave the row unchanged.
+- [x] Removal names the stored amount, date, and both account labels; focus
       moves to Cancel; Cancel writes nothing; Remove deletes and returns to
       the list.
-- [ ] A failed removal leaves the row and shows the error; a double removal
+- [x] A failed removal leaves the row and shows the error; a double removal
       deletes once.
-- [ ] Missing and non-transfer ids render the not-found state.
-- [ ] `npm test` and `npm run typecheck` pass.
+- [x] Missing and non-transfer ids render the not-found state.
+- [x] `npm test` and `npm run typecheck` pass.
 
 ---
 
@@ -682,31 +689,31 @@ and record it.
 
 **Acceptance criteria**
 
-- [ ] Adding, correcting, and removing a transfer in the current or previous
+- [x] Adding, correcting, and removing a transfer in the current or previous
       month leaves `monthSummary`, `categoryEntries`, and
       `previousMonthHasSpending` unchanged.
-- [ ] A transfer with a stray `categoryId` never appears in spending.
-- [ ] A backup/restore round-trip reproduces transfers exactly under
+- [x] A transfer with a stray `categoryId` never appears in spending.
+- [x] A backup/restore round-trip reproduces transfers exactly under
       `BACKUP_SCHEMA_VERSION = 1`; a no-transfer v1 file restores an empty
       list.
-- [ ] Missing-account and self-transfer rows survive restore and are handled
+- [x] Missing-account and self-transfer rows survive restore and are handled
       by the list/editor.
-- [ ] The zero-account gate redirects all three transfer routes to Accounts.
-- [ ] The manual checklist above passes in a real browser, offline, at 320px
+- [x] The zero-account gate redirects all three transfer routes to Accounts.
+- [x] The manual checklist above passes in a real browser, offline, at 320px
       and one desktop width, with the screen-reader checks recorded.
-- [ ] `SCHEMA_VERSION` and `BACKUP_SCHEMA_VERSION` remain `1`.
-- [ ] `npm test` and `npm run typecheck` pass.
+- [x] `SCHEMA_VERSION` and `BACKUP_SCHEMA_VERSION` remain `1`.
+- [x] `npm test` and `npm run typecheck` pass.
 
 ---
 
 ## Slice close-out
 
-- [ ] All seven tickets pass their tests; `npm test` and `npm run typecheck`
+- [x] All seven tickets pass their tests; `npm test` and `npm run typecheck`
       are green on `slice-08`.
-- [ ] The architecture, spec, and these tickets reflect what was built; no
+- [x] The architecture, spec, and these tickets reflect what was built; no
       production divergence was found; both version constants remain `1`.
-- [ ] The north-star entry-kind table's `fromAccountId` is corrected to
+- [x] The north-star entry-kind table's `fromAccountId` is corrected to
       `accountId` at close-out or the next drift check.
-- [ ] `docs/product/backlog.md` marks slice 8 complete and names the next
+- [x] `docs/product/backlog.md` marks slice 8 complete and names the next
       slice.
-- [ ] Slice handoff written to `docs/agents/slice-08-closeout-handoff.md`.
+- [x] Slice handoff written to `docs/agents/slice-08-closeout-handoff.md`.

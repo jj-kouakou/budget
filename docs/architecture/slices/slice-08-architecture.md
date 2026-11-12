@@ -4,7 +4,9 @@
 money between two of their own accounts, and that movement never counts as
 spending.
 
-**Status:** designed 2026-11-11; ready for program design. Not yet built.
+**Status:** built and closed 2026-11-12. Built as designed; no production
+divergence was found at close-out. `SCHEMA_VERSION` and
+`BACKUP_SCHEMA_VERSION` remain `1`.
 
 Extends `docs/architecture/north-star.md`,
 `docs/architecture/slices/slice-01-architecture.md`,
@@ -48,8 +50,9 @@ There are **no endpoints**. The app remains static files plus IndexedDB
 One decision in this slice is expensive to reverse after data exists: the
 stored field that names a transfer's source account.
 
-- `docs/architecture/north-star.md` names it `fromAccountId` in the entry-kind
-  table, while its own ER diagram and the built `Entry` type use `accountId`.
+- `docs/architecture/north-star.md` named it `fromAccountId` in the
+  entry-kind table, while its own ER diagram and the built `Entry` type use
+  `accountId`. The table was corrected at close-out.
 - `docs/program-design/slices/slice-01-spec.md` already resolved the
   mismatch: “The transfer source is `accountId`… Slice 8 can rename the field
   only with a schema migration.” The backup validator already accepts
@@ -65,9 +68,9 @@ destination. Consequences:
 - No Dexie migration and no `BACKUP_SCHEMA_VERSION` bump.
 - Every entry kind keeps one primary account field; a transfer is the only
   kind that also carries a destination.
-- The north-star table's `fromAccountId` is stale prose. The ER diagram
-  already says `accountId`; the table should be corrected at close-out or the
-  next architecture drift check. This slice does not edit the north star.
+- The north-star table's `fromAccountId` was stale prose. The ER diagram
+  already said `accountId`; the table and prose were corrected to `accountId`
+  at close-out.
 - No ADR is added. The choice is already recorded in the slice-01 spec; this
   gate only confirms it. A new ADR would restate an existing decision rather
   than introduce one.

@@ -19,7 +19,7 @@ Entries are a single collection with a `kind` discriminator:
 |---|---|---|
 | `expense` | accountId, categoryId, amount (positive) | negative on that account |
 | `income` | accountId, categoryId, amount (positive) | positive on that account |
-| `transfer` | fromAccountId, toAccountId, amount (positive) | −from, +to |
+| `transfer` | accountId, toAccountId, amount (positive) | −accountId, +toAccountId |
 | `opening` | accountId, amount (signed) | as signed |
 
 `opening` is the only kind whose stored amount is signed, because an account
@@ -61,8 +61,8 @@ Rules that fall out of this, and are not negotiable later:
   derived balance of `-24000`. Display flips the sign and says "owed".
 - **Spending totals count expenses only.** Transfers, openings, and income
   never appear in a category total. Paying a card is not spending.
-- **A transfer is one row**, with `fromAccountId` and `toAccountId`, so it
-  cannot half-exist.
+- **A transfer is one row**, with `accountId` (source) and `toAccountId`
+  (destination), so it cannot half-exist.
 - **Opening balance is an entry**, dated the account's creation date, entered
   once when the account is added.
 - Categories are flat, user-managed, one per expense/income, archived rather

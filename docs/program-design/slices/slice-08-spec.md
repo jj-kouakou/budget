@@ -1,7 +1,8 @@
 # Slice 08 Program Design Spec — Record transfers
 
 - **Gate:** Slice Program Design (workflow step 5).
-- **Status:** designed 2026-11-11; ready for ticket breakdown. Not yet built.
+- **Status:** built and closed 2026-11-12. Implemented as specified; no
+  production divergence was found at close-out.
 - **Sources:** `docs/product/slices/slice-08-scope.md`,
   `docs/architecture/slices/slice-08-architecture.md`,
   `docs/architecture/north-star.md`, `docs/architecture/slices/slice-01-architecture.md`,
@@ -2253,10 +2254,9 @@ a layout experiment.
   moving between two of the user's own accounts, not income, not expense, never
   categorised, and a credit-card payment is a transfer. “Source account” and
   “destination account” are ordinary descriptions, not new terms.
-- **North-star drift.** The north-star entry-kind table's `fromAccountId` is
-  stale prose; its ER diagram and every built type use `accountId`. This slice
-  does not edit the north star. Correct the table at close-out or the next
-  drift check.
+- **North-star drift.** The north-star entry-kind table said `fromAccountId`
+  while its ER diagram and every built type used `accountId`. The table and
+  prose were corrected to `accountId` at close-out.
 - **Known edge: id `new`.** `#/transfers/new` is the add route and wins over
   `#/transfers/<id>`, so a stored transfer with id exactly `new` is unreachable
   by URL. App-created ids are UUIDs and never collide. The parser is not

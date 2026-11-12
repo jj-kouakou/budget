@@ -15,7 +15,7 @@ The app replaces the spreadsheet that gets abandoned in week three.
 | 3 | Keep a backup | Export the ledger to a file and restore it; see when the last backup was made and whether the phone might discard the data. | Done — deployed 2026-11-11 at https://jj-kouakou.github.io/budget/ |
 | 4 | Manage categories | Add, rename, archive, and unarchive categories so the breakdown matches how they think about their money. | Done — deployed 2026-11-11 at https://jj-kouakou.github.io/budget/ |
 | 5 | Compare with last month | See last month's category totals beside this month's. | Done — deployed 2026-11-11 at https://jj-kouakou.github.io/budget/ |
-| 8 | Record transfers | Move money between their own accounts, including paying a credit card, without counting it as spending. | In progress |
+| 8 | Record transfers | Move money between their own accounts, including paying a credit card, without counting it as spending. | Done — deployed 2026-11-12 at https://jj-kouakou.github.io/budget/ |
 | 7 | Record income | Record money coming in, categorized, without inflating spending. | Backlog |
 | 6 | Track account balances | Enter opening balances and see what each account holds or owes. | Backlog |
 
@@ -107,6 +107,21 @@ The app replaces the spreadsheet that gets abandoned in week three.
   reconciliation metric explicitly requires card payments as transfers; income
   follows because it completes the ledger and needs income categories settled;
   balances come last, when the movements behind them exist.
+- **Slice 8 was completed on 2026-11-12; slice 7 (income) is still the right
+  next slice.** Close-out re-checked the order and found no reason to change
+  it. Transfers added no stored shape — `SCHEMA_VERSION` and
+  `BACKUP_SCHEMA_VERSION` stay `1`, and no table, index, backup field, or
+  settings write changed — so they add no migration or cleanup before income.
+  The durable naming question is settled: a transfer stores its source in
+  `accountId` and its destination in `toAccountId`; the north-star table and
+  prose now say so. That is the shape balances will read: `−accountId`,
+  `+toAccountId`. Income is still next because a balance cannot be truthful
+  until inflows are recorded; transfers completed the outflow side, but with
+  expenses and transfers alone a checking balance still omits paychecks.
+  Balances remain last. The release step is done: slice 8 is merged into
+  `master`, pushed, and deployed. The one open validation fact is unchanged:
+  slice 5's comparison cannot be checked against real data until December
+  2026 at the earliest; that does not reorder anything.
 - **The remaining order is dependency order, corrected for completeness:
   transfers → income → balances.** Each slice still depends only on what is
   before it. The correction is that balances depend on the movements that make
