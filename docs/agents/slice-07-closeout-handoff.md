@@ -4,118 +4,118 @@
 
 Slice close-out (workflow step 9). Slice 7 — Record income.
 Build and review were completed in the same session and are recorded in
-`docs/agents/slice-07-build-review-handoff.md`. This close-out reconciles the
-definition of done, updates the plan docs to the built state, and updates the
-backlog.
+`docs/agents/slice-07-build-review-handoff.md`. This close-out independently
+re-ran the verification commands, reconciled the plan docs with the built
+code, and confirmed the backlog order.
 
 ## Branch and state
 
 | Ref | Commit | Meaning |
 |---|---|---|
 | `slice-07` | `123aaa3` | build and review, tickets 1–8 |
-| `slice-07` | close-out commit | docs reconciliation and this report |
+| `slice-07` | this docs commit | final close-out reconciliation and this report |
 | `master` | `06323ff` | branch cut point; not merged in this session |
 
 The slice is built and reviewed. It is **not merged, pushed, or deployed**;
-that remains the release step.
+that remains the release step. The close-out definition of done does not
+include deployment.
 
-## 1. Tests
+## 1. All tickets pass their tests — confirmed
 
 ```
 npm test
 ```
 
-Result: **640 passed, 22 files, 0 failures.** No test was deleted or skipped.
+Result on `slice-07`: **22 test files passed, 640 tests passed, 0 failures**
+(30.9s). This is the full suite, including every ticket's ledger, router,
+screen, and invariant tests.
 
 ```
 npm run typecheck
-```
-
-Result: **clean**.
-
-```
 npm run build
 ```
 
-Result: **clean**; PWA precache 12 entries.
+Both are **clean**. The production build completed in 665ms; PWA precache
+contains 12 entries.
 
-`SCHEMA_VERSION` and `BACKUP_SCHEMA_VERSION` remain `1`; the ledger test that
-pins both still passes.
+`SCHEMA_VERSION` and `BACKUP_SCHEMA_VERSION` remain `1`, and the ledger test
+that pins both still passes. No test was skipped or removed for this close-out.
 
-## 2. Review
+## 2. Code review — approved, no unresolved issues
 
-Approved. Fresh `reviewer` and `security-reviewer` subagents reviewed
-`git diff master...HEAD` independently, without the build transcript:
+Approved. The fresh `reviewer` and `security-reviewer` subagents recorded in
+`docs/agents/slice-07-build-review-handoff.md` reviewed
+`git diff master...HEAD` independently of the build transcript:
 
-- **Quality and spec conformance:** zero findings across the ledger contract,
-  router fallbacks, shared form cutover, three screens, exact copy,
-  accessible names, focus, guards, and tests.
-- **Security:** zero findings across untrusted backup strings, the `Ledger`
-  seam, settings mutation, validation bypass, cross-kind corruption, routes,
-  schema/backup compatibility, and fail-open behavior.
+- **Quality and spec conformance:** zero findings.
+- **Security:** zero findings.
 
-Per-call model override is disabled in this environment, so the reviewers ran
-on their configured agent profiles. No review-fixes commit exists.
+No review-fixes commit exists because no issue was raised. The one note in the
+security review — a pre-existing `domain/backup.ts` currency/exponent
+validation gap — is explicitly outside this slice, and the v1 parser was not
+tightened.
 
-## 3. Docs vs. what was built
+## 3. Architecture and spec reflect what was built — confirmed
 
-Verified against the source and test suite:
+Verified against the source, not just the plan:
 
-- `listIncome`, `addIncome`, `updateIncome`, `deleteIncome`,
-  `entriesOfKindNewestFirst`, and `requireCategorizedEntryFields` match the
-  architecture and spec. Validation order is amount → date → account →
-  category → active-or-stored archived.
-- The three routes and fallbacks match Spec §6.1; `App` gained the three
-  screen cases.
-- The list state precedence is loading → empty → list. Rows render in ledger
-  order with category, amount, account label, and date, and the accessible
-  name is `Income: {category}, {amount}, {account}, {date}`.
-- Add defaults are `lastAccountId` when valid, else the first account; date
-  today; amount blank; category unselected. The no-active-category gate
-  renders the exact message and Categories action with no form.
-- The editor seeds from the stored row, requires replacements for missing
-  references, offers the archived stored category as `(archived)`, corrects
-  one row, and removes with a stored-value confirmation focused on Cancel.
-- No schema, index, backup field, settings write, or route on an existing
-  screen changed. Income remains excluded from spending by the existing
+- `CategorizedEntryInput`, `IncomeListItem`, `listIncome`, `addIncome`,
+  `updateIncome`, and `deleteIncome` match the architecture and spec. The
+  validation order is amount → date → account → category → active-or-stored
+  archived category.
+- `entriesOfKindNewestFirst` orders by `date` descending, then `id`
+  descending; both `listTransfers` and `listIncome` use it.
+- The three routes `#/income`, `#/income/new`, and `#/income/<id>` match Spec
+  §6.1, including the exact-path checks before the id branch, the `/income/`
+  fallback, and the three `routeToHash` cases.
+- `App` contains the three income screen cases, and the home actions row
+  starts with `Income`.
+- `IncomeScreen`, `AddIncomeScreen`, and `IncomeEditorScreen` implement the
+  state precedence, exact copy, accessible-name template, archived-category
+  handling, missing-reference degradation, guards, confirmation copy, and
+  focus behaviour described in the spec.
+- The shared form cutover is complete: `categorizedEntryForm.tsx` and
+  `choiceGroup.tsx` are the only implementations; the expense and transfer
+  callers import the kind-neutral names.
+- No table, index, backup field, settings write, existing route, or spending
+  read changed. Income remains excluded from spending by the existing
   `kind === 'expense'` predicates.
 
-No production divergence was found, so close-out changes were documentation
-only:
+**No production divergence was found.** The close-out therefore changed no
+architecture or spec prose; the existing status lines already say “built and
+reviewed 2026-11-12”. All eight ticket acceptance blocks and the slice
+close-out block are ticked in `slice-07-tickets.md`.
 
-- Status lines in `slice-07-architecture.md`, `slice-07-spec.md`, and
-  `slice-07-tickets.md` now say built and reviewed.
-- All ticket acceptance boxes and the slice close-out boxes are ticked.
-- The flagged ticket-boundary decisions record how the build confirmed them.
-- `docs/product/backlog.md` marks slice 7 done and records the close-out order
-  check.
+## 4. AGENTS.md — no change required
 
-## 4. AGENTS.md
+This slice added no doc path. Scope, architecture, spec, tickets, build/review
+handoff, and this handoff all live in folders `AGENTS.md` already lists. No
+new ADR, `CONTEXT.md` section, or `docs/external/` file was created. `CONTEXT.md`
+gained income terminology, but the file and its path already existed and are
+already listed.
 
-**No change required.** This slice added no doc path. Scope, architecture,
-spec, tickets, build/review handoff, and this handoff all live in folders
-`AGENTS.md` already lists. No new ADR, `CONTEXT.md` entry, or
-`docs/external/` file was created.
+## 5. Backlog — slice 7 marked done; slice 6 is still next
 
-## 5. Backlog
-
-`docs/product/backlog.md` marks slice 7 done — built and reviewed
-2026-11-12. Deployment is the remaining release step.
+`docs/product/backlog.md` marks slice 7 as **Done — built and reviewed
+2026-11-12**. Deployment is the only remaining release step.
 
 **Next slice: 6 — Track account balances. Still the right one to pull.**
 
-- The ledger now holds expenses, transfers, and income. Balances are the
-  remaining user-visible gap.
-- No stored shape changed, so no migration or cleanup precedes balances.
-- Slice 5's real-data comparison check is still pending until December 2026;
-  it does not reorder anything.
+- The ledger now holds expenses, transfers, and income, so a balance can be
+  computed from complete movements instead of omitting inflows.
+- Income changed no stored shape, so no migration or cleanup precedes
+  balances.
+- Slice 5's real-data comparison check remains pending until December 2026;
+  that does not reorder anything.
+- Nothing learned in this slice changes the dependency order
+  transfers → income → balances.
 
 ## Known notes, not defects
 
 - The income list reads the whole `entries` table and filters
-  `kind === 'income'` in memory. This is intentional at one user and a few
-  thousand rows; a `kind` or `[kind+date]` index is a later Dexie version
-  bump with no data rewrite.
+  `kind === 'income'` in memory. Intentional at one user and a few thousand
+  rows; a `kind` or `[kind+date]` index is a later Dexie version bump with no
+  data rewrite.
 - The backup parser tolerates an income with no `categoryId` and a stray
   `toAccountId`; v1 already does. The list degrades the category to
   `Uncategorized`, spending ignores both fields, the editor requires a
@@ -126,7 +126,8 @@ spec, tickets, build/review handoff, and this handoff all live in folders
 ## Not verified
 
 - Physical phone install, real service-worker offline reload, and real screen
-  reader output.
+  reader output. The browser pass in the build/review handoff used a managed
+  Chromium profile.
 - Backup restore through the browser UI; unit tests cover the round-trip.
 - Merge, push, and deployment.
 
