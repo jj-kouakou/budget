@@ -4,7 +4,9 @@
 accounts, see it in one list, correct or remove it, and never have it counted
 as spending.
 
-**Status:** designed 2026-11-12; not built.
+**Status:** built and reviewed 2026-11-12. Built as designed; no production
+divergence was found at review. `SCHEMA_VERSION` and
+`BACKUP_SCHEMA_VERSION` remain `1`.
 
 Extends `docs/architecture/north-star.md`,
 `docs/architecture/slices/slice-01-architecture.md`,

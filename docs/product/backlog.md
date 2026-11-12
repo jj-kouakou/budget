@@ -16,7 +16,7 @@ The app replaces the spreadsheet that gets abandoned in week three.
 | 4 | Manage categories | Add, rename, archive, and unarchive categories so the breakdown matches how they think about their money. | Done — deployed 2026-11-11 at https://jj-kouakou.github.io/budget/ |
 | 5 | Compare with last month | See last month's category totals beside this month's. | Done — deployed 2026-11-11 at https://jj-kouakou.github.io/budget/ |
 | 8 | Record transfers | Move money between their own accounts, including paying a credit card, without counting it as spending. | Done — deployed 2026-11-12 at https://jj-kouakou.github.io/budget/ |
-| 7 | Record income | Record money coming in, categorized, and see or correct it without inflating spending. | In progress — scoped 2026-11-12 |
+| 7 | Record income | Record money coming in, categorized, and see or correct it without inflating spending. | Done — built and reviewed 2026-11-12 |
 | 6 | Track account balances | Enter opening balances and see what each account holds or owes. | Backlog |
 
 ## Why this order
@@ -135,6 +135,13 @@ The app replaces the spreadsheet that gets abandoned in week three.
   Slice 5's real-data comparison check is still pending until December 2026;
   it does not reorder anything. Scope:
   `docs/product/slices/slice-07-scope.md`.
+- **The 2026-11-12 slice 7 close-out re-checked the order and kept slice 6
+  (balances) next.** Income is built and reviewed; the ledger now holds
+  expenses, transfers, and inflows. No reordering: balances are the remaining
+  user-visible gap, and they depend on the movements now recorded. The build
+  changed no stored shape, so no migration or cleanup precedes balances.
+  Slice 5's real-data comparison check is still pending until December 2026;
+  it does not reorder anything.
 - **The remaining order is dependency order, corrected for completeness:
   transfers → income → balances.** Each slice still depends only on what is
   before it. The correction is that balances depend on the movements that make

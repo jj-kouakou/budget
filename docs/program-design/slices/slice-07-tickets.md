@@ -9,8 +9,11 @@
 - **Branch:** `slice-07`, cut from `master` after the gate docs are committed.
   Slices 1–5 and 8 are merged and deployed as of 2026-11-12; slice 6 is
   deferred behind income.
-- **Status:** proposed 2026-11-12; not built. The flagged boundary decisions
-  below need confirmation before the first ticket starts.
+- **Status:** built and reviewed 2026-11-12. All eight tickets were implemented
+  test-first and the suite is green. Boundary decisions 2, 3, 5, and 6 were
+  confirmed: routing landed before the screens, intermediate commits are not
+  standalone releases, the editor did not depend on the add screen, and App
+  wiring was built serially.
 
 Each ticket is one build session, test-first, and one commit when its tests
 pass. Every ticket leaves the suite green for the surface it has shipped.
@@ -280,21 +283,21 @@ ordering uses the same helper income will use.
 
 **Acceptance criteria**
 
-- [ ] `addIncome` writes exactly one `entries` row with `kind: 'income'`, the
+- [x] `addIncome` writes exactly one `entries` row with `kind: 'income'`, the
       input amount/category/account/date, no `toAccountId`, and returns it.
-- [ ] `requireCategorizedEntryFields` enforces the five checks in the
+- [x] `requireCategorizedEntryFields` enforces the five checks in the
       normative order; each failure throws the specified `LedgerErrorCode` and
       writes nothing.
-- [ ] `addIncome` never reads or writes `settings`.
-- [ ] `CategorizedEntryInput` replaces `ExpenseInput` with no alias; existing
+- [x] `addIncome` never reads or writes `settings`.
+- [x] `CategorizedEntryInput` replaces `ExpenseInput` with no alias; existing
       expense behaviour and tests are unchanged.
-- [ ] `listIncome` returns only income, newest first by date then id, joins
+- [x] `listIncome` returns only income, newest first by date then id, joins
       names, degrades missing references without dropping the row, and never
       filters archived categories.
-- [ ] `listTransfers` uses `entriesOfKindNewestFirst` and its observable order
+- [x] `listTransfers` uses `entriesOfKindNewestFirst` and its observable order
       is unchanged.
-- [ ] No schema, index, backup, or settings change.
-- [ ] `npm test` and `npm run typecheck` pass.
+- [x] No schema, index, backup, or settings change.
+- [x] `npm test` and `npm run typecheck` pass.
 
 ---
 
@@ -351,17 +354,17 @@ final.
 
 **Acceptance criteria**
 
-- [ ] `updateIncome` reads and kind-checks before field validation, updates
+- [x] `updateIncome` reads and kind-checks before field validation, updates
       exactly the four editable fields on one row, and never creates a second
       row.
-- [ ] A missing row between read and update yields `unknown-entry`.
-- [ ] The stored archived category is allowed on correction; a different
+- [x] A missing row between read and update yields `unknown-entry`.
+- [x] The stored archived category is allowed on correction; a different
       archived category is refused with `archived-category`.
-- [ ] A stray `toAccountId` is preserved and never written by the app.
-- [ ] `deleteIncome` removes the one row, returns the snapshot, and leaves no
+- [x] A stray `toAccountId` is preserved and never written by the app.
+- [x] `deleteIncome` removes the one row, returns the snapshot, and leaves no
       tombstone.
-- [ ] Both mutations leave `settings.lastAccountId` unchanged.
-- [ ] `npm test` and `npm run typecheck` pass.
+- [x] Both mutations leave `settings.lastAccountId` unchanged.
+- [x] `npm test` and `npm run typecheck` pass.
 
 ---
 
@@ -410,15 +413,15 @@ account, and date.
 
 **Acceptance criteria**
 
-- [ ] `choiceGroup.tsx` is the only `ChoiceGroup`; both the categorized-entry
+- [x] `choiceGroup.tsx` is the only `ChoiceGroup`; both the categorized-entry
       form and the transfer form import it.
-- [ ] `categorizedEntryForm.tsx` is the only categorized-entry form module and
+- [x] `categorizedEntryForm.tsx` is the only categorized-entry form module and
       exports the three renamed symbols.
-- [ ] `ExpenseFields`, `ExpenseFieldErrors`, and `expenseFieldErrors` no
+- [x] `ExpenseFields`, `ExpenseFieldErrors`, and `expenseFieldErrors` no
       longer exist anywhere.
-- [ ] `idPrefix` accepts `'expense'`, `'entry'`, and `'income'`.
-- [ ] Existing expense and transfer screen tests are unchanged and green.
-- [ ] `npm test` and `npm run typecheck` pass.
+- [x] `idPrefix` accepts `'expense'`, `'entry'`, and `'income'`.
+- [x] Existing expense and transfer screen tests are unchanged and green.
+- [x] `npm test` and `npm run typecheck` pass.
 
 ---
 
@@ -463,12 +466,12 @@ with the exact fallbacks in the spec. `App` is intentionally untouched.
 
 **Acceptance criteria**
 
-- [ ] The three routes parse exactly as Spec §6.1, including query strings,
+- [x] The three routes parse exactly as Spec §6.1, including query strings,
       trailing slashes, raw slashes, encoded slashes, and decode failure.
-- [ ] `routeToHash` is exhaustive and returns the three exact hashes.
-- [ ] Existing routes and their tests are unchanged.
-- [ ] `App` is not edited in this ticket.
-- [ ] `npm test` and `npm run typecheck` pass.
+- [x] `routeToHash` is exhaustive and returns the three exact hashes.
+- [x] Existing routes and their tests are unchanged.
+- [x] `App` is not edited in this ticket.
+- [x] `npm test` and `npm run typecheck` pass.
 
 ---
 
@@ -538,18 +541,18 @@ first-income action, rows open the editor route, and Back returns home.
 
 **Acceptance criteria**
 
-- [ ] The list state precedence is exactly loading → empty → list.
-- [ ] Rows are in ledger order and are never sorted, filtered, merged, or
+- [x] The list state precedence is exactly loading → empty → list.
+- [x] Rows are in ledger order and are never sorted, filtered, merged, or
       summed by the UI.
-- [ ] Each row shows category, amount, account label, and date; the accessible
+- [x] Each row shows category, amount, account label, and date; the accessible
       name states all four in the exact template.
-- [ ] Missing categories and accounts render `Uncategorized` and
+- [x] Missing categories and accounts render `Uncategorized` and
       `Unknown account`; the row remains clickable.
-- [ ] Empty and non-empty states use the exact spec copy and actions.
-- [ ] The home `Income` button is first in the actions row and present in
+- [x] Empty and non-empty states use the exact spec copy and actions.
+- [x] The home `Income` button is first in the actions row and present in
       every state.
-- [ ] The list does not scroll horizontally at 320px.
-- [ ] `npm test` and `npm run typecheck` pass.
+- [x] The list does not scroll horizontally at 320px.
+- [x] `npm test` and `npm run typecheck` pass.
 
 ---
 
@@ -617,18 +620,18 @@ explains the fix and links to Categories instead of rendering a form.
 
 **Acceptance criteria**
 
-- [ ] The no-active-category gate renders the exact message and Categories
+- [x] The no-active-category gate renders the exact message and Categories
       action with no form, whether the table is empty or fully archived.
-- [ ] Defaults are exactly: amount blank; category unselected; account from a
+- [x] Defaults are exactly: amount blank; category unselected; account from a
       valid `lastAccountId` else the first account else `null`; date today.
-- [ ] Amount, category, account, and date validation match Spec §6.5 and map
+- [x] Amount, category, account, and date validation match Spec §6.5 and map
       ledger codes to the correct fields.
-- [ ] Saving writes exactly one row, navigates to the list, and does not
+- [x] Saving writes exactly one row, navigates to the list, and does not
       change `settings.lastAccountId`.
-- [ ] The double-submit guard allows one write and disables Save.
-- [ ] Archived categories are never offered.
-- [ ] Cancel returns to the list without writing.
-- [ ] `npm test` and `npm run typecheck` pass.
+- [x] The double-submit guard allows one write and disables Save.
+- [x] Archived categories are never offered.
+- [x] Cancel returns to the list without writing.
+- [x] `npm test` and `npm run typecheck` pass.
 
 ---
 
@@ -717,20 +720,20 @@ refused.
 
 **Acceptance criteria**
 
-- [ ] The editor seeds from the stored row; missing category/account start
+- [x] The editor seeds from the stored row; missing category/account start
       with the correct errors and block saving until replaced.
-- [ ] An archived stored category is offered as `(archived)` and kept on
+- [x] An archived stored category is offered as `(archived)` and kept on
       save; switching to a different archived category is refused.
-- [ ] A correction updates the one row; no second row; the list reflects the
+- [x] A correction updates the one row; no second row; the list reflects the
       change immediately; a date change moves the row.
-- [ ] Back and Cancel leave the row unchanged.
-- [ ] Removal names the stored amount, date, category, and account label;
+- [x] Back and Cancel leave the row unchanged.
+- [x] Removal names the stored amount, date, category, and account label;
       focus moves to Cancel; Cancel writes nothing; Remove deletes and returns
       to the list.
-- [ ] A failed removal leaves the row and shows the error; a double removal
+- [x] A failed removal leaves the row and shows the error; a double removal
       deletes once.
-- [ ] Missing and non-income ids render the not-found state.
-- [ ] `npm test` and `npm run typecheck` pass.
+- [x] Missing and non-income ids render the not-found state.
+- [x] `npm test` and `npm run typecheck` pass.
 
 ---
 
@@ -815,31 +818,31 @@ and record it.
 
 **Acceptance criteria**
 
-- [ ] Adding, correcting, and removing income in the current or previous month
+- [x] Adding, correcting, and removing income in the current or previous month
       leaves `monthSummary`, `categoryEntries`, and `previousMonthHasSpending`
       unchanged.
-- [ ] An income sharing a category with an expense never appears in
+- [x] An income sharing a category with an expense never appears in
       `categoryEntries`.
-- [ ] A backup/restore round-trip reproduces income exactly under
+- [x] A backup/restore round-trip reproduces income exactly under
       `BACKUP_SCHEMA_VERSION = 1`; a no-income v1 file restores an empty list.
-- [ ] Missing-reference and stray-`toAccountId` rows survive restore and are
+- [x] Missing-reference and stray-`toAccountId` rows survive restore and are
       handled by the list/editor.
-- [ ] The zero-account gate redirects all three income routes to Accounts.
-- [ ] The manual checklist above passes in a real browser, offline, at 320px
+- [x] The zero-account gate redirects all three income routes to Accounts.
+- [x] The manual checklist above passes in a real browser, offline, at 320px
       and one desktop width, with the screen-reader checks recorded.
-- [ ] `SCHEMA_VERSION` and `BACKUP_SCHEMA_VERSION` remain `1`.
-- [ ] `npm test` and `npm run typecheck` pass.
+- [x] `SCHEMA_VERSION` and `BACKUP_SCHEMA_VERSION` remain `1`.
+- [x] `npm test` and `npm run typecheck` pass.
 
 ---
 
 ## Slice close-out
 
-- [ ] All eight tickets pass their tests; `npm test` and `npm run typecheck`
+- [x] All eight tickets pass their tests; `npm test` and `npm run typecheck`
       are green on `slice-07`.
-- [ ] The architecture, spec, and these tickets reflect what was built; no
+- [x] The architecture, spec, and these tickets reflect what was built; no
       production divergence; both version constants remain `1`.
-- [ ] No table, index, backup field, settings write, endpoint, or ADR was
+- [x] No table, index, backup field, settings write, endpoint, or ADR was
       added.
-- [ ] `docs/product/backlog.md` marks slice 7 complete and confirms slice 6
+- [x] `docs/product/backlog.md` marks slice 7 complete and confirms slice 6
       (balances) is still the next slice.
-- [ ] Slice handoff written to `docs/agents/slice-07-closeout-handoff.md`.
+- [x] Slice handoff written to `docs/agents/slice-07-closeout-handoff.md`.

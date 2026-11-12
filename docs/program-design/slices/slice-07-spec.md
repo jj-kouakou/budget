@@ -1,7 +1,8 @@
 # Slice 07 Program Design Spec — Record income
 
 - **Gate:** Slice Program Design (workflow step 5).
-- **Status:** specified 2026-11-12; not built.
+- **Status:** built and reviewed 2026-11-12. Implemented as specified; no
+  production divergence was found at review.
 - **Sources:** `docs/product/slices/slice-07-scope.md`,
   `docs/architecture/slices/slice-07-architecture.md`,
   `docs/architecture/north-star.md`,
