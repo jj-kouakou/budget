@@ -1,8 +1,12 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import type { AccountType, Settings } from '../../domain/types';
 import { monthOf, todayLocalDate } from '../../domain/calendar';
-import { formatAmount } from '../../domain/money';
+import {
+  formatAmount,
+  formatAmountInput,
+  parseSignedAmount,
+} from '../../domain/money';
 import type {
   AccountBalanceListItem,
   Ledger,
@@ -18,6 +22,8 @@ function accountErrorMessage(code: LedgerErrorCode): string {
       return 'Enter an account name of 60 characters or fewer.';
     case 'invalid-account-type':
       return 'Choose a valid account type.';
+    case 'invalid-opening-amount':
+      return 'Enter a valid starting amount.';
     case 'unknown-account':
       return 'That account no longer exists.';
     default:
@@ -52,6 +58,28 @@ function balanceText(
   return formatted(row.balanceMinor);
 }
 
+function ledgerSignedAmount(
+  type: AccountType,
+  presented: number,
+): number {
+  const value = type === 'credit' ? -presented : presented;
+  return value === 0 ? 0 : value;
+}
+
+function presentedAmount(
+  type: AccountType,
+  ledgerSigned: number,
+): number {
+  const value = type === 'credit' ? -ledgerSigned : ledgerSigned;
+  return value === 0 ? 0 : value;
+}
+
+function openingHint(type: AccountType): string {
+  return type === 'credit'
+    ? 'What the card owed before you started logging. Use a minus if it was in credit.'
+    : 'What the account held before you started logging. Use a minus if it was overdrawn.';
+}
+
 type RowEditor =
   | {
       kind: 'rename';
@@ -81,9 +109,24 @@ export function AccountsScreen({ ledger }: { ledger: Ledger }) {
   const [rowBusy, setRowBusy] = useState(false);
   const rowBusyRef = useRef(false);
 
+  useEffect(() => {
+    if (
+      rowBusy ||
+      rowEditor?.kind !== 'opening' ||
+      balances === undefined
+    ) {
+      return;
+    }
+    if (!balances.some((row) => row.id === rowEditor.accountId)) {
+      setRowEditor(null);
+    }
+  }, [balances, rowBusy, rowEditor]);
+
   if (balances === undefined || settings === undefined) {
     return <p>Loading…</p>;
   }
+
+  const currencyExponent = settings.currencyExponent;
 
   async function addAccount(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -119,6 +162,18 @@ export function AccountsScreen({ ledger }: { ledger: Ledger }) {
     setRowError(null);
   }
 
+  function startOpening(row: AccountBalanceListItem) {
+    setRowEditor({
+      kind: 'opening',
+      accountId: row.id,
+      draft: formatAmountInput(
+        presentedAmount(row.type, row.openingBalanceMinor),
+        currencyExponent,
+      ),
+    });
+    setRowError(null);
+  }
+
   function cancelRowEditor() {
     setRowEditor(null);
     setRowError(null);
@@ -149,6 +204,75 @@ export function AccountsScreen({ ledger }: { ledger: Ledger }) {
     }
   }
 
+  async function saveOpening(
+    event: React.FormEvent<HTMLFormElement>,
+    row: AccountBalanceListItem,
+  ) {
+    event.preventDefault();
+    if (rowEditor?.kind !== 'opening' || rowBusyRef.current) {
+      return;
+    }
+    if (rowEditor.draft.trim() === '') {
+      setRowError(
+        row.hasOpeningBalance
+          ? 'Enter a starting amount, or clear it.'
+          : 'Enter a starting amount.',
+      );
+      return;
+    }
+
+    const parsed = parseSignedAmount(
+      rowEditor.draft,
+      currencyExponent,
+    );
+    if (parsed === null) {
+      setRowError('Enter a valid starting amount.');
+      return;
+    }
+
+    rowBusyRef.current = true;
+    setRowBusy(true);
+    setRowError(null);
+    try {
+      await ledger.setOpeningBalance(
+        row.id,
+        ledgerSignedAmount(row.type, parsed),
+      );
+      setRowEditor(null);
+    } catch (error) {
+      if (error instanceof LedgerError) {
+        setRowError(accountErrorMessage(error.code));
+      } else {
+        setRowError('Could not save the account. Try again.');
+      }
+    } finally {
+      rowBusyRef.current = false;
+      setRowBusy(false);
+    }
+  }
+
+  async function clearOpening(row: AccountBalanceListItem) {
+    if (rowEditor?.kind !== 'opening' || rowBusyRef.current) {
+      return;
+    }
+    rowBusyRef.current = true;
+    setRowBusy(true);
+    setRowError(null);
+    try {
+      await ledger.setOpeningBalance(row.id, null);
+      setRowEditor(null);
+    } catch (error) {
+      if (error instanceof LedgerError) {
+        setRowError(accountErrorMessage(error.code));
+      } else {
+        setRowError('Could not save the account. Try again.');
+      }
+    } finally {
+      rowBusyRef.current = false;
+      setRowBusy(false);
+    }
+  }
+
   return (
     <section>
       <h1>Accounts</h1>
@@ -160,7 +284,7 @@ export function AccountsScreen({ ledger }: { ledger: Ledger }) {
       ) : null}
 
       {rowError ? (
-        <p role="alert" className="form-error">
+        <p id="row-error" role="alert" className="form-error">
           {rowError}
         </p>
       ) : null}
@@ -206,8 +330,70 @@ export function AccountsScreen({ ledger }: { ledger: Ledger }) {
       <ul className="account-list">
         {balances.map((row) => (
           <li key={row.id}>
-            {rowEditor?.kind === 'rename' &&
+            {rowEditor?.kind === 'opening' &&
             rowEditor.accountId === row.id ? (
+              <form
+                onSubmit={(event) => saveOpening(event, row)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Escape' && !rowBusy) {
+                    cancelRowEditor();
+                  }
+                }}
+              >
+                <div className="field">
+                  <label htmlFor={`opening-${row.id}`}>
+                    Starting point for {row.name}
+                  </label>
+                  <p id={`opening-hint-${row.id}`} className="hint">
+                    {openingHint(row.type)}
+                  </p>
+                  <input
+                    id={`opening-${row.id}`}
+                    type="text"
+                    inputMode="decimal"
+                    autoComplete="off"
+                    value={rowEditor.draft}
+                    aria-describedby={
+                      rowError
+                        ? `opening-hint-${row.id} row-error`
+                        : `opening-hint-${row.id}`
+                    }
+                    onChange={(event) => {
+                      const draft = event.target.value;
+                      setRowEditor((current) =>
+                        current?.kind === 'opening'
+                          ? { ...current, draft }
+                          : current,
+                      );
+                      setRowError(null);
+                    }}
+                  />
+                </div>
+                <div className="actions">
+                  <button type="submit" disabled={rowBusy}>
+                    Save
+                  </button>
+                  {row.hasOpeningBalance ? (
+                    <button
+                      type="button"
+                      disabled={rowBusy}
+                      aria-label={`Clear starting point for ${row.name}`}
+                      onClick={() => clearOpening(row)}
+                    >
+                      Clear
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    disabled={rowBusy}
+                    onClick={cancelRowEditor}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            ) : rowEditor?.kind === 'rename' &&
+              rowEditor.accountId === row.id ? (
               <form
                 onSubmit={saveRename}
                 onKeyDown={(event) => {
@@ -250,10 +436,26 @@ export function AccountsScreen({ ledger }: { ledger: Ledger }) {
                 </span>
                 <button
                   type="button"
+                  disabled={rowBusy}
                   onClick={() => startRename(row.id, row.name)}
                 >
                   Rename
                 </button>
+                <button
+                  type="button"
+                  disabled={rowBusy}
+                  onClick={() => startOpening(row)}
+                >
+                  {row.hasOpeningBalance
+                    ? `Edit starting point for ${row.name}`
+                    : `Set starting point for ${row.name}`}
+                </button>
+                {!row.hasOpeningBalance ? (
+                  <p className="hint account-hint">
+                    No starting point set. The balance is the sum of recorded
+                    movements.
+                  </p>
+                ) : null}
               </>
             )}
           </li>

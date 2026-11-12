@@ -192,6 +192,11 @@ select {
   font-variant-numeric: tabular-nums;
 }
 
+.account-hint {
+  flex-basis: 100%;
+  margin: 0;
+}
+
 .chip-group {
   display: flex;
   flex-wrap: wrap;
