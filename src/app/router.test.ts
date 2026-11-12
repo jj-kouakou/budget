@@ -43,6 +43,21 @@ describe('parseHash', () => {
     ['#/entry/', { name: 'home', month: '2026-11' }],
     ['#/entry/a/b', { name: 'home', month: '2026-11' }],
     ['#/entry/%E0%A4%A', { name: 'home', month: '2026-11' }],
+    ['#/transfers', { name: 'transfers' }],
+    ['#/transfers?x=1', { name: 'transfers' }],
+    ['#/transfers/new', { name: 'add-transfer' }],
+    ['#/transfers/new?x=1', { name: 'add-transfer' }],
+    ['#/transfers/new/', { name: 'home', month: '2026-11' }],
+    ['#/transfers/', { name: 'home', month: '2026-11' }],
+    ['#/transfers//', { name: 'home', month: '2026-11' }],
+    ['#/transfers/abc', { name: 'transfer', entryId: 'abc' }],
+    [
+      '#/transfers/abc?m=2026-11',
+      { name: 'transfer', entryId: 'abc' },
+    ],
+    ['#/transfers/a/b', { name: 'home', month: '2026-11' }],
+    ['#/transfers/%E0%A4%A', { name: 'home', month: '2026-11' }],
+    ['#/transfers/abc%2Fdef', { name: 'transfer', entryId: 'abc/def' }],
     ['#/nope', { name: 'home', month: '2026-11' }],
     ['#/add/', { name: 'home', month: '2026-11' }],
     ['#//', { name: 'home', month: '2026-11' }],
@@ -70,6 +85,11 @@ describe('routeToHash', () => {
     expect(routeToHash({ name: 'entry', entryId: '3f1c-abc' })).toBe(
       '#/entry/3f1c-abc',
     );
+    expect(routeToHash({ name: 'transfers' })).toBe('#/transfers');
+    expect(routeToHash({ name: 'add-transfer' })).toBe('#/transfers/new');
+    expect(routeToHash({ name: 'transfer', entryId: '3f1c-abc' })).toBe(
+      '#/transfers/3f1c-abc',
+    );
   });
 
   it('round-trips a category id containing reserved characters', () => {
@@ -89,6 +109,21 @@ describe('routeToHash', () => {
     };
 
     expect(parseHash(routeToHash(route), '2026-11-02')).toEqual(route);
+  });
+
+  it('round-trips a transfer id containing reserved characters', () => {
+    const route = {
+      name: 'transfer' as const,
+      entryId: 'transfer &? #/space',
+    };
+
+    expect(parseHash(routeToHash(route), '2026-11-02')).toEqual(route);
+  });
+
+  it('never parses the add hash as a transfer id', () => {
+    expect(parseHash('#/transfers/new', '2026-11-02')).toEqual({
+      name: 'add-transfer',
+    });
   });
 });
 

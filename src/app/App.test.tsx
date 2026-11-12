@@ -130,6 +130,76 @@ describe('App', () => {
     ).toBeInTheDocument();
   });
 
+  it('renders the transfers screen from #/transfers with one account', async () => {
+    await ledger.addAccount({ name: 'Checking', type: 'checking' });
+    window.location.hash = '#/transfers';
+
+    render(<App ledger={ledger} />);
+
+    expect(
+      await screen.findByRole('heading', { name: 'Transfers' }),
+    ).toBeInTheDocument();
+  });
+
+  it('renders the add transfer form from #/transfers/new with two accounts', async () => {
+    await ledger.addAccount({ name: 'Checking', type: 'checking' });
+    await ledger.addAccount({ name: 'Visa', type: 'credit' });
+    window.location.hash = '#/transfers/new';
+
+    render(<App ledger={ledger} />);
+
+    expect(
+      await screen.findByRole('heading', { name: 'Add transfer' }),
+    ).toBeInTheDocument();
+  });
+
+  it.each([
+    '#/transfers',
+    '#/transfers/new',
+    '#/transfers/entry-1',
+  ])('forces accounts from a zero-account %s deep link', async (hash) => {
+    window.location.hash = hash;
+
+    render(<App ledger={ledger} />);
+
+    expect(
+      await screen.findByRole('heading', { name: 'Accounts' }),
+    ).toBeInTheDocument();
+    expect(window.location.hash).toBe('#/accounts');
+  });
+
+  it('renders the transfer editor from a stored transfer', async () => {
+    const checking = await ledger.addAccount({
+      name: 'Checking',
+      type: 'checking',
+    });
+    const visa = await ledger.addAccount({ name: 'Visa', type: 'credit' });
+    const entry = await ledger.addTransfer({
+      amountMinor: 24000,
+      accountId: checking.id,
+      toAccountId: visa.id,
+      date: '2026-11-02',
+    });
+    window.location.hash = `#/transfers/${entry.id}`;
+
+    render(<App ledger={ledger} />);
+
+    expect(
+      await screen.findByRole('heading', { name: 'Correct transfer' }),
+    ).toBeInTheDocument();
+  });
+
+  it('renders transfer not found for an unknown transfer id', async () => {
+    await ledger.addAccount({ name: 'Checking', type: 'checking' });
+    window.location.hash = '#/transfers/missing';
+
+    render(<App ledger={ledger} />);
+
+    expect(
+      await screen.findByRole('heading', { name: 'Transfer not found' }),
+    ).toBeInTheDocument();
+  });
+
   it('renders home for an unknown route without rewriting the hash', async () => {
     await ledger.addAccount({ name: 'Checking', type: 'checking' });
     window.location.hash = '#/nope';

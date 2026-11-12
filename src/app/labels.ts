@@ -5,3 +5,10 @@ export const ACCOUNT_TYPE_LABELS: Record<AccountType, string> = {
   savings: 'Savings',
   credit: 'Credit card',
 };
+
+export function accountWithTypeLabel(
+  name: string,
+  type: AccountType | null,
+): string {
+  return type === null ? name : `${name} · ${ACCOUNT_TYPE_LABELS[type]}`;
+}
