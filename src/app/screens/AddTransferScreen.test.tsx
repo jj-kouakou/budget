@@ -239,6 +239,7 @@ describe('AddTransferScreen', () => {
     await renderForm();
 
     await user.type(screen.getByLabelText('Amount'), '10');
+    await selectAccount('From account', 'Checking · Checking');
     await db.accounts.delete(checking.id);
     await waitFor(() =>
       expect(
@@ -261,6 +262,7 @@ describe('AddTransferScreen', () => {
     await renderForm();
 
     await user.type(screen.getByLabelText('Amount'), '10');
+    await selectAccount('From account', 'Checking · Checking');
     await selectAccount('To account', 'Visa · Credit card');
     await db.accounts.delete(visa.id);
     await waitFor(() =>
