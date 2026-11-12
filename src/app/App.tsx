@@ -4,6 +4,7 @@ import type { Ledger } from '../data/ledger';
 import { navigate, useHashRoute } from './router';
 import { AccountsScreen } from './screens/AccountsScreen';
 import { AddExpenseScreen } from './screens/AddExpenseScreen';
+import { AddTransferScreen } from './screens/AddTransferScreen';
 import { BackupScreen } from './screens/BackupScreen';
 import { CategoriesScreen } from './screens/CategoriesScreen';
 import { CategoryEntriesScreen } from './screens/CategoryEntriesScreen';
@@ -79,5 +80,7 @@ export function App({ ledger }: { ledger: Ledger }) {
       return <EntryEditorScreen ledger={ledger} entryId={route.entryId} />;
     case 'transfers':
       return <TransfersScreen ledger={ledger} />;
+    case 'add-transfer':
+      return <AddTransferScreen ledger={ledger} />;
   }
 }

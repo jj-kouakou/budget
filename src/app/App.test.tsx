@@ -141,6 +141,18 @@ describe('App', () => {
     ).toBeInTheDocument();
   });
 
+  it('renders the add transfer form from #/transfers/new with two accounts', async () => {
+    await ledger.addAccount({ name: 'Checking', type: 'checking' });
+    await ledger.addAccount({ name: 'Visa', type: 'credit' });
+    window.location.hash = '#/transfers/new';
+
+    render(<App ledger={ledger} />);
+
+    expect(
+      await screen.findByRole('heading', { name: 'Add transfer' }),
+    ).toBeInTheDocument();
+  });
+
   it('renders home for an unknown route without rewriting the hash', async () => {
     await ledger.addAccount({ name: 'Checking', type: 'checking' });
     window.location.hash = '#/nope';
