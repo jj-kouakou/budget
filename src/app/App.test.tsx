@@ -130,6 +130,17 @@ describe('App', () => {
     ).toBeInTheDocument();
   });
 
+  it('renders the transfers screen from #/transfers with one account', async () => {
+    await ledger.addAccount({ name: 'Checking', type: 'checking' });
+    window.location.hash = '#/transfers';
+
+    render(<App ledger={ledger} />);
+
+    expect(
+      await screen.findByRole('heading', { name: 'Transfers' }),
+    ).toBeInTheDocument();
+  });
+
   it('renders home for an unknown route without rewriting the hash', async () => {
     await ledger.addAccount({ name: 'Checking', type: 'checking' });
     window.location.hash = '#/nope';

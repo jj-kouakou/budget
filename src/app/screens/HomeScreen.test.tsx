@@ -611,6 +611,16 @@ describe('HomeScreen storage warning', () => {
     await screen.findByRole('button', { name: 'Back up now' });
   });
 
+  it('shows a Transfers action in the empty state and navigates to the list', async () => {
+    const user = userEvent.setup();
+    render(<HomeScreen ledger={ledger} month="2026-11" />);
+    await screen.findByText('No spending yet this month.');
+
+    await user.click(screen.getByRole('button', { name: 'Transfers' }));
+
+    expect(window.location.hash).toBe('#/transfers');
+  });
+
   it('keeps the summary, month controls, and actions', async () => {
     setStorage({
       persist: vi.fn().mockResolvedValue(false),

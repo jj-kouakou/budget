@@ -1,6 +1,6 @@
 import type { Account, Category } from '../domain/types';
 import type { LedgerErrorCode } from '../data/ledger';
-import { ACCOUNT_TYPE_LABELS } from './labels';
+import { accountWithTypeLabel } from './labels';
 
 export interface ExpenseFieldErrors {
   amount?: string;
@@ -146,7 +146,7 @@ export function ExpenseFields({
         legend="Account"
         options={accounts.map((account) => ({
           id: account.id,
-          label: `${account.name} · ${ACCOUNT_TYPE_LABELS[account.type]}`,
+          label: accountWithTypeLabel(account.name, account.type),
         }))}
         selectedId={accountId}
         errorId={errors.account ? `${idPrefix}-account-error` : undefined}

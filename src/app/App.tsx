@@ -9,6 +9,7 @@ import { CategoriesScreen } from './screens/CategoriesScreen';
 import { CategoryEntriesScreen } from './screens/CategoryEntriesScreen';
 import { EntryEditorScreen } from './screens/EntryEditorScreen';
 import { HomeScreen } from './screens/HomeScreen';
+import { TransfersScreen } from './screens/TransfersScreen';
 
 export function App({ ledger }: { ledger: Ledger }) {
   const route = useHashRoute();
@@ -76,5 +77,7 @@ export function App({ ledger }: { ledger: Ledger }) {
       );
     case 'entry':
       return <EntryEditorScreen ledger={ledger} entryId={route.entryId} />;
+    case 'transfers':
+      return <TransfersScreen ledger={ledger} />;
   }
 }
