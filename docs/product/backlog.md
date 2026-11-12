@@ -16,7 +16,7 @@ The app replaces the spreadsheet that gets abandoned in week three.
 | 4 | Manage categories | Add, rename, archive, and unarchive categories so the breakdown matches how they think about their money. | Done — deployed 2026-11-11 at https://jj-kouakou.github.io/budget/ |
 | 5 | Compare with last month | See last month's category totals beside this month's. | Done — deployed 2026-11-11 at https://jj-kouakou.github.io/budget/ |
 | 8 | Record transfers | Move money between their own accounts, including paying a credit card, without counting it as spending. | Done — deployed 2026-11-12 at https://jj-kouakou.github.io/budget/ |
-| 7 | Record income | Record money coming in, categorized, without inflating spending. | Backlog |
+| 7 | Record income | Record money coming in, categorized, and see or correct it without inflating spending. | In progress — scoped 2026-11-12 |
 | 6 | Track account balances | Enter opening balances and see what each account holds or owes. | Backlog |
 
 ## Why this order
@@ -122,6 +122,19 @@ The app replaces the spreadsheet that gets abandoned in week three.
   `master`, pushed, and deployed. The one open validation fact is unchanged:
   slice 5's comparison cannot be checked against real data until December
   2026 at the earliest; that does not reorder anything.
+- **The 2026-11-12 scope gate re-checked the order and kept slice 7 (income)
+  next.** No reordering. The app can now record expenses and transfers, but
+  not money arriving from outside the user's own accounts, so the ledger still
+  cannot hold a paycheck. That is a completeness gap in the "only ledger"
+  destination, and the primary success metric counts real transactions;
+  income is one of them. Income is also the last movement balances need: a
+  checking balance without paychecks is wrong. The slice adds no migration:
+  the backup file already accepts income entries and categories are already
+  flat and user-managed, so `SCHEMA_VERSION` and `BACKUP_SCHEMA_VERSION` stay
+  `1` unless the architecture gate finds otherwise. Balances remain last.
+  Slice 5's real-data comparison check is still pending until December 2026;
+  it does not reorder anything. Scope:
+  `docs/product/slices/slice-07-scope.md`.
 - **The remaining order is dependency order, corrected for completeness:
   transfers → income → balances.** Each slice still depends only on what is
   before it. The correction is that balances depend on the movements that make
