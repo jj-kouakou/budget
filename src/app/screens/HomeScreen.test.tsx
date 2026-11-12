@@ -611,6 +611,40 @@ describe('HomeScreen storage warning', () => {
     await screen.findByRole('button', { name: 'Back up now' });
   });
 
+  it('keeps transfers out of the total, rows, and comparison', async () => {
+    const card = await ledger.addAccount({ name: 'Visa', type: 'credit' });
+    await addExpense(2000, 'cat_groceries', '2026-11-02');
+    await addExpense(500, 'cat_transport', '2026-10-02');
+    await ledger.addTransfer({
+      amountMinor: 77700,
+      accountId: checking.id,
+      toAccountId: card.id,
+      date: '2026-11-03',
+    });
+    await ledger.addTransfer({
+      amountMinor: 88800,
+      accountId: card.id,
+      toAccountId: checking.id,
+      date: '2026-10-04',
+    });
+
+    render(<HomeScreen ledger={ledger} month="2026-11" />);
+
+    await screen.findByText('Spent');
+    expect(screen.getByText('Spent').closest('.spent')).toHaveTextContent(
+      '20.00',
+    );
+    const rows = screen.getAllByRole('listitem');
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toHaveTextContent('Groceries');
+    expect(rows[0]).toHaveTextContent(money(2000));
+    expect(rows[1]).toHaveTextContent('Transport');
+    expect(rows[1]).toHaveTextContent(money(500));
+    expect(screen.queryByText(money(77700))).not.toBeInTheDocument();
+    expect(screen.queryByText(money(88800))).not.toBeInTheDocument();
+    expect(screen.queryByText(/Visa/)).not.toBeInTheDocument();
+  });
+
   it('shows a Transfers action in the empty state and navigates to the list', async () => {
     const user = userEvent.setup();
     render(<HomeScreen ledger={ledger} month="2026-11" />);

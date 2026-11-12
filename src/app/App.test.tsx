@@ -153,6 +153,21 @@ describe('App', () => {
     ).toBeInTheDocument();
   });
 
+  it.each([
+    '#/transfers',
+    '#/transfers/new',
+    '#/transfers/entry-1',
+  ])('forces accounts from a zero-account %s deep link', async (hash) => {
+    window.location.hash = hash;
+
+    render(<App ledger={ledger} />);
+
+    expect(
+      await screen.findByRole('heading', { name: 'Accounts' }),
+    ).toBeInTheDocument();
+    expect(window.location.hash).toBe('#/accounts');
+  });
+
   it('renders the transfer editor from a stored transfer', async () => {
     const checking = await ledger.addAccount({
       name: 'Checking',
