@@ -17,7 +17,7 @@ The app replaces the spreadsheet that gets abandoned in week three.
 | 5 | Compare with last month | See last month's category totals beside this month's. | Done — deployed 2026-11-11 at https://jj-kouakou.github.io/budget/ |
 | 8 | Record transfers | Move money between their own accounts, including paying a credit card, without counting it as spending. | Done — deployed 2026-11-12 at https://jj-kouakou.github.io/budget/ |
 | 7 | Record income | Record money coming in, categorized, and see or correct it without inflating spending. | Done — built and reviewed 2026-11-12 |
-| 6 | Track account balances | Enter opening balances and see what each account holds or owes. | In progress — scope: `docs/product/slices/slice-06-scope.md` |
+| 6 | Track account balances | Enter opening balances and see what each account holds or owes. | Done — built and reviewed 2026-11-12 |
 
 ## Why this order
 
@@ -154,6 +154,21 @@ The app replaces the spreadsheet that gets abandoned in week three.
   6: the live app must hold income before a balance can include it. Slice 5's
   real-data comparison check is still pending until December 2026; it does not
   reorder anything. Scope: `docs/product/slices/slice-06-scope.md`.
+
+- **The 2026-11-12 slice-6 close-out marked slice 6 done; the backlog is now
+  complete.** All eight slices are built and reviewed. No stored shape changed
+  in this slice — `SCHEMA_VERSION` and `BACKUP_SCHEMA_VERSION` stay `1`, and
+  no table, index, backup field, route, or settings write changed. The next
+  action is release, not a new slice: `master` contains the slice 7 merge but
+  is six commits ahead of `origin/master`, and slice 6 is not merged. Merge
+  slice 6, push, deploy, and verify the live bundle holds income before
+  balances. After that the only tracked validation is slice 5's real-data
+  last-month comparison, which cannot run until December 2026 at the
+  earliest. One test-suite fact carries forward: accounts created in the same
+  millisecond share `createdAt`, so fixtures must select the account they
+  intend by `listAccounts()` order rather than assume creation order; two
+  transfer fixtures were repaired for this on the slice 6 branch. Nothing
+  learned this slice adds or reorders backlog work.
 
 ## Out of scope
 

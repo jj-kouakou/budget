@@ -1,8 +1,10 @@
 # Slice 06 Program Design Spec — Track account balances
 
 - **Gate:** Slice Program Design (workflow step 5).
-- **Status:** written 2026-11-12; not built. `SCHEMA_VERSION` and
-  `BACKUP_SCHEMA_VERSION` remain `1`.
+- **Status:** built and reviewed 2026-11-12. Implemented as specified; no
+  production divergence was found at review. `SCHEMA_VERSION` and
+  `BACKUP_SCHEMA_VERSION` remain `1`. Not yet merged, pushed, or deployed;
+  that is the release step.
 - **Sources:** `docs/product/slices/slice-06-scope.md`,
   `docs/architecture/slices/slice-06-architecture.md`,
   `docs/architecture/north-star.md`, the slice 01–05, 07, and 08 architecture
@@ -1587,10 +1589,16 @@ question was the state model, and the reducer answered it.
 - **Offline.** Every read and write is local IndexedDB; there is no network
   path. The service worker and installability are unchanged. Offline is
   verified manually, not in unit tests.
-- **Release precondition.** Slice 7 (income) is built and reviewed but must be
-  merged, pushed, and deployed before slice 6 ships, so the live app holds
-  income before a balance includes it.
-- **Ticket shape.** Cut along the seam:
+- **Release precondition.** Slice 7 (income) was merged into local `master`
+  before this slice was cut; neither is pushed or deployed. Release both
+  together so the live app holds income before a balance includes it.
+- **Ticket shape.** The ticket-breakdown gate split the seam into eight
+  tickets (see `slice-06-tickets.md`): 1 `parseSignedAmount`, 2 `RowEditor`
+  union prefactor, 3 `listAccountBalances`, 4 `addAccount` opening, 5
+  `setOpeningBalance` plus invariants/backup, 6 balance display, 7 invitation
+  and inline form, 8 add-form field and final copy. Each shipped as one
+  test-first commit; the four-part grouping below is the original seam, not
+  the build breakdown.
   1. domain money: `parseSignedAmount` and its tests;
   2. ledger contract: types, error code, `compareAccountsByCreation`,
      `openingDateFor`, `listAccountBalances`, the extended `addAccount`,

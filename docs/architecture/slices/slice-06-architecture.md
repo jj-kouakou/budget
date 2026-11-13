@@ -4,8 +4,9 @@
 opening balance and every expense, income, and transfer recorded against it;
 the user can set, change, or clear one opening balance per account.
 
-**Status:** architecture designed 2026-11-12; not built. `SCHEMA_VERSION` and
-`BACKUP_SCHEMA_VERSION` remain `1`.
+**Status:** built and reviewed 2026-11-12. Built as designed; no production
+divergence was found at review. `SCHEMA_VERSION` and `BACKUP_SCHEMA_VERSION`
+remain `1`. Not yet merged, pushed, or deployed; that is the release step.
 
 Extends `docs/architecture/north-star.md`,
 `docs/architecture/slices/slice-01-architecture.md`,
@@ -634,22 +635,24 @@ The destination is unchanged: the user can use the app as their only ledger.
 Slice 6 is the next step on the existing map — the last supporting-context
 gap the vision names — and it depends only on the movements now recorded.
 This gate surfaces no decision that needs its own ticket and no fog that
-changes the route. The only route-level fact is a release precondition, not a
-reordering: slice 7 (income) is built and reviewed but must be merged,
-pushed, and deployed before slice 6 ships, so the live app holds income
-before a balance includes it.
+changes the route. The only route-level fact is a release precondition, now
+half done: slice 7 (income) is merged into local `master` but not pushed or
+deployed, and slice 6 is cut from that merge. Both must be released together
+before the live app shows balances, so the live app holds income before a
+balance includes it.
 
 ## Handoff notes
 
-- The next gate is Slice Program Design (`to-spec`), then ticket breakdown.
-  It inherits: the two interfaces above, the effect table, the one-opening
-  collapse rule, the opening-date fallback, the display table, and the error
-  code.
+- The slice is complete through review; the next step is release (merge
+  `slice-06` into `master`, push, deploy). The program spec and tickets
+  inherited the interfaces above, the effect table, the one-opening collapse
+  rule, the opening-date fallback, the display table, and the error code, and
+  the build matched them.
 - No `CONTEXT.md` change: **Balance** and **Opening balance** already cover
   this slice, and "starting point" is UI copy for the same concept.
 - No ADR: the stored shape is the north-star's, not a new decision.
 - No `AGENTS.md` change: the new doc lives in an already-listed folder.
-- Open items carried forward: release slice 7 before slice 6; slice 5's
+- Open items carried forward: release slices 7 and 6 together; slice 5's
   real-data comparison waits for December 2026; physical-phone install, real
   offline use, and real screen-reader output remain unexercised; single-tab
   assumption.

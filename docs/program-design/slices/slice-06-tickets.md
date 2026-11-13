@@ -5,14 +5,17 @@
   "Spec §…"), `docs/architecture/slices/slice-06-architecture.md`,
   `docs/product/slices/slice-06-scope.md`, `docs/architecture/north-star.md`,
   ADRs 0001/0005, `CONTEXT.md`, and the current `src/`.
-- **Branch base:** the working tree is on `slice-07` (income built, not merged
-  into `master`); `master` already contains slice 08 but **not** slice 07, so
-  it has no `addIncome`/`listIncome`. This slice's balance includes income.
-  Do not cut `slice-06` from the current `master`. Merge slice 07 into
-  `master` first, then cut `slice-06` from that merge. This is the only
-  blocker outside the slice and is recorded as boundary decision 0.
-- **Status:** proposed 2026-11-12; not built. Boundary decisions 1–7 are
-  flagged rather than silently fixed; 0, 8, and 9 are settled.
+- **Branch base:** `slice-06` was cut from `master` at `6971334`, the merge of
+  slice 07 (income). That merge is local only — it is not pushed or deployed —
+  so `master` is six commits ahead of `origin/master`. This slice's balance
+  includes income; release both slices together.
+- **Status:** built and reviewed 2026-11-12. All eight tickets were implemented
+  test-first and the suite is green; every acceptance box below is ticked.
+  Boundary decisions resolved as built: 1 kept eight tickets; 2 and 3 kept the
+  prefactors separate; 4 kept display (6) before the affordance (7); 6 folded
+  the invariant and backup tests into ticket 5; 7 kept the add-form field
+  after the inline form (8). Boundary decision 0 was executed: slice 07 was
+  merged into `master`, then `slice-06` was cut from it.
 
 Each ticket is one build session, test-first, and one commit when its tests
 pass. Every ticket leaves the suite green and every surface it has shipped
@@ -236,14 +239,14 @@ entered as owed, overdrawn, or in credit.
 
 **Acceptance criteria**
 
-- [ ] `parseSignedAmount` accepts exactly one optional leading `-`, with no
+- [x] `parseSignedAmount` accepts exactly one optional leading `-`, with no
       space between sign and digits.
-- [ ] Negative zero never escapes; `Object.is(result, 0)` holds for all three
+- [x] Negative zero never escapes; `Object.is(result, 0)` holds for all three
       zero spellings.
-- [ ] Every grammar case in Spec §8.3 passes, including exponent 0 and the
+- [x] Every grammar case in Spec §8.3 passes, including exponent 0 and the
       `RangeError` precedence.
-- [ ] `parseAmount` is byte-for-byte unchanged and its tests still pass.
-- [ ] `npm test` and `npm run typecheck` pass.
+- [x] `parseAmount` is byte-for-byte unchanged and its tests still pass.
+- [x] `npm test` and `npm run typecheck` pass.
 
 ---
 
@@ -285,13 +288,13 @@ adjustment; ideally none).
 
 **Acceptance criteria**
 
-- [ ] One screen-level `RowEditor | null` replaces the rename state; at most
+- [x] One screen-level `RowEditor | null` replaces the rename state; at most
       one editor can be open.
-- [ ] Every rename test passes without an assertion change beyond mechanical
+- [x] Every rename test passes without an assertion change beyond mechanical
       query updates.
-- [ ] The stale-rename form still renders above the list with the snapshotted
+- [x] The stale-rename form still renders above the list with the snapshotted
       name.
-- [ ] No visual or copy change; `npm test` and `npm run typecheck` pass.
+- [x] No visual or copy change; `npm test` and `npm run typecheck` pass.
 
 ---
 
@@ -348,17 +351,17 @@ from every entry effect.
 
 **Acceptance criteria**
 
-- [ ] `listAccountBalances` returns exactly one row per account, in
+- [x] `listAccountBalances` returns exactly one row per account, in
       `listAccounts` order.
-- [ ] `balanceMinor` is the signed sum of every entry effect; `openingBalanceMinor`
+- [x] `balanceMinor` is the signed sum of every entry effect; `openingBalanceMinor`
       is the signed sum of opening entries only.
-- [ ] `hasOpeningBalance` is true for an opening of zero.
-- [ ] Unknown accounts, unknown kinds, and missing destinations contribute no
+- [x] `hasOpeningBalance` is true for an opening of zero.
+- [x] Unknown accounts, unknown kinds, and missing destinations contribute no
       effect and create no phantom row.
-- [ ] A computed `-0` is returned as positive `0`.
-- [ ] The read is one `'r'` transaction over `accounts` and `entries`.
-- [ ] No schema, index, `Account`, or settings change.
-- [ ] `npm test` and `npm run typecheck` pass.
+- [x] A computed `-0` is returned as positive `0`.
+- [x] The read is one `'r'` transaction over `accounts` and `entries`.
+- [x] No schema, index, `Account`, or settings change.
+- [x] `npm test` and `npm run typecheck` pass.
 
 ---
 
@@ -407,15 +410,15 @@ with the account, so the new row has a meaningful balance from the start.
 
 **Acceptance criteria**
 
-- [ ] An omitted opening writes no entry; a provided zero writes one opening
+- [x] An omitted opening writes no entry; a provided zero writes one opening
       of zero.
-- [ ] Account and opening are one transaction: both exist or neither does.
-- [ ] The opening is dated the account's creation local date, not today's
+- [x] Account and opening are one transaction: both exist or neither does.
+- [x] The opening is dated the account's creation local date, not today's
       date, with a safe fallback for a bad `createdAt`.
-- [ ] Validation precedence and the new error code match Spec §5.6/§5.9.
-- [ ] `-0` is normalized at the write boundary.
-- [ ] No `settings`, `categoryId`, or `toAccountId` write on the opening path.
-- [ ] `npm test` and `npm run typecheck` pass.
+- [x] Validation precedence and the new error code match Spec §5.6/§5.9.
+- [x] `-0` is normalized at the write boundary.
+- [x] No `settings`, `categoryId`, or `toAccountId` write on the opening path.
+- [x] `npm test` and `npm run typecheck` pass.
 
 ---
 
@@ -488,17 +491,17 @@ the income/transfer lists; and a backup round-trip preserves them.
 
 **Acceptance criteria**
 
-- [ ] Set creates one opening, change updates it in place, clear deletes all;
+- [x] Set creates one opening, change updates it in place, clear deletes all;
       duplicates collapse to one on the next set.
-- [ ] `null` on an account with no openings is a successful no-op.
-- [ ] Validation runs before the transaction; invalid amounts write nothing.
-- [ ] No other entry, account field, or settings value changes.
-- [ ] Openings never appear in `monthSummary`, `categoryEntries`, `listIncome`,
+- [x] `null` on an account with no openings is a successful no-op.
+- [x] Validation runs before the transaction; invalid amounts write nothing.
+- [x] No other entry, account field, or settings value changes.
+- [x] Openings never appear in `monthSummary`, `categoryEntries`, `listIncome`,
       or `listTransfers`.
-- [ ] Backup round-trip preserves openings, including zero and duplicates;
+- [x] Backup round-trip preserves openings, including zero and duplicates;
       an older file restores with movement-only balances.
-- [ ] Both version constants stay `1`; the parser is unchanged.
-- [ ] `npm test` and `npm run typecheck` pass.
+- [x] Both version constants stay `1`; the parser is unchanged.
+- [x] `npm test` and `npm run typecheck` pass.
 
 ---
 
@@ -548,14 +551,14 @@ empty-state copy retained), §6.8 (`.account-balance`), §6.9 (prohibitions),
 
 **Acceptance criteria**
 
-- [ ] The screen reads only `listAccountBalances` and `getSettings`; it does
+- [x] The screen reads only `listAccountBalances` and `getSettings`; it does
       not call `listAccounts`.
-- [ ] Loading renders until both reads resolve.
-- [ ] Balance text matches the type table exactly, including `overdrawn`,
+- [x] Loading renders until both reads resolve.
+- [x] Balance text matches the type table exactly, including `overdrawn`,
       `owed`, and `in credit`.
-- [ ] No combined total, no home change, no starting-point affordance.
-- [ ] Rows stay in ledger order and update live after a write.
-- [ ] `npm test` and `npm run typecheck` pass.
+- [x] No combined total, no home change, no starting-point affordance.
+- [x] Rows stay in ledger order and update live after a write.
+- [x] `npm test` and `npm run typecheck` pass.
 
 ---
 
@@ -629,16 +632,16 @@ rule), §6.6 (inline copy), §6.7 (accessibility), §8.5 cases 2, 6–15, 21, 23
 
 **Acceptance criteria**
 
-- [ ] A missing opening shows the invitation and the Set button; a present
+- [x] A missing opening shows the invitation and the Set button; a present
       opening shows the Edit button and no invitation.
-- [ ] Set, change, and clear update the balance and invitation live.
-- [ ] An empty save never clears silently; the copy distinguishes the two
+- [x] Set, change, and clear update the balance and invitation live.
+- [x] An empty save never clears silently; the copy distinguishes the two
       empty cases.
-- [ ] Only one editor is open at a time; busy disables the row actions.
-- [ ] The form's label, hint, error, and Clear name are associated and
+- [x] Only one editor is open at a time; busy disables the row actions.
+- [x] The form's label, hint, error, and Clear name are associated and
       announced.
-- [ ] No add-form change; no combined total; no settings write.
-- [ ] `npm test` and `npm run typecheck` pass.
+- [x] No add-form change; no combined total; no settings write.
+- [x] `npm test` and `npm run typecheck` pass.
 
 ---
 
@@ -693,14 +696,14 @@ the zero-account copy tells the user they can set it now or later.
 
 **Acceptance criteria**
 
-- [ ] The add form accepts an optional starting point; an empty value is not
+- [x] The add form accepts an optional starting point; an empty value is not
       an error and writes no entry.
-- [ ] An invalid value blocks the account write and shows the field error.
-- [ ] A credit opening is converted to ledger-signed before storage; the hint
+- [x] An invalid value blocks the account write and shows the field error.
+- [x] A credit opening is converted to ledger-signed before storage; the hint
       follows the selected type.
-- [ ] The form resets fully after success.
-- [ ] The zero-account copy matches Spec §6.6; the actions are unchanged.
-- [ ] `npm test` and `npm run typecheck` pass.
+- [x] The form resets fully after success.
+- [x] The zero-account copy matches Spec §6.6; the actions are unchanged.
+- [x] `npm test` and `npm run typecheck` pass.
 
 ---
 
