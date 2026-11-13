@@ -6,6 +6,7 @@ import type { Account } from '../../domain/types';
 import { BudgetDatabase } from '../../data/db';
 import { createLedger } from '../../data/ledger';
 import type { Ledger } from '../../data/ledger';
+import { accountWithTypeLabel } from '../labels';
 import { AddTransferScreen } from './AddTransferScreen';
 
 let db: BudgetDatabase;
@@ -85,16 +86,22 @@ describe('AddTransferScreen', () => {
 
     await renderForm();
 
+    const accounts = await createLedger(db).listAccounts();
+    const first = accounts[0];
+    const second = accounts[1];
+    if (!first || !second) {
+      throw new Error('expected two accounts');
+    }
     expect(
       within(screen.getByRole('group', { name: 'From account' })).getByRole(
         'button',
-        { name: 'Checking · Checking' },
+        { name: accountWithTypeLabel(first.name, first.type) },
       ),
     ).toHaveAttribute('aria-pressed', 'true');
     expect(
       within(screen.getByRole('group', { name: 'To account' })).getByRole(
         'button',
-        { name: 'Visa · Credit card' },
+        { name: accountWithTypeLabel(second.name, second.type) },
       ),
     ).toHaveAttribute('aria-pressed', 'true');
   });

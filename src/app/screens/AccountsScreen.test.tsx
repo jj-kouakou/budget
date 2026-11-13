@@ -24,6 +24,21 @@ function renderScreen() {
   return render(<AccountsScreen ledger={createLedger(db)} />);
 }
 
+function rowFor(name: string): HTMLElement {
+  const row = screen
+    .getAllByRole('listitem')
+    .find(
+      (candidate) =>
+        within(candidate).queryByText(name, {
+          selector: '.account-name',
+        }) !== null,
+    );
+  if (!row) {
+    throw new Error(`Missing row for ${name}`);
+  }
+  return row;
+}
+
 describe('AccountsScreen', () => {
   it('adds an account, shows its type, and reveals Start logging', async () => {
     const user = userEvent.setup();
@@ -170,21 +185,6 @@ describe('AccountsScreen', () => {
 
 
 describe('AccountsScreen balances', () => {
-  function rowFor(name: string): HTMLElement {
-    const row = screen
-      .getAllByRole('listitem')
-      .find(
-        (candidate) =>
-          within(candidate).queryByText(name, {
-            selector: '.account-name',
-          }) !== null,
-      );
-    if (!row) {
-      throw new Error(`Missing row for ${name}`);
-    }
-    return row;
-  }
-
   it('shows an overdrawn checking balance with its minus', async () => {
     const ledger = createLedger(db);
     const checking = await ledger.addAccount({
@@ -316,21 +316,6 @@ describe('AccountsScreen balances', () => {
 });
 
 describe('AccountsScreen starting point', () => {
-  function rowFor(name: string): HTMLElement {
-    const row = screen
-      .getAllByRole('listitem')
-      .find(
-        (candidate) =>
-          within(candidate).queryByText(name, {
-            selector: '.account-name',
-          }) !== null,
-      );
-    if (!row) {
-      throw new Error(`Missing row for ${name}`);
-    }
-    return row;
-  }
-
   async function openSet(name: string) {
     const user = userEvent.setup();
     await user.click(
