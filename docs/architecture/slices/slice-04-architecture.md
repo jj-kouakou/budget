@@ -91,12 +91,13 @@ No table, key, or index changes:
 | `accounts` | `id` | `createdAt` | unchanged |
 | `settings` | `id` (`'app'`) | — | unchanged |
 
-`Category`'s shape stays exactly (the comment records the write rule):
+`Category`'s shape stays exactly (the write rule lives in the validator, not in
+the type's comments):
 
 ```ts
 export interface Category {
-  id: string;   // stable string; seed ids are cat_*; new ids are UUIDs
-  name: string; // trimmed, 1..60 characters; app writes unique ignoring case
+  id: string;   // stable string; seed ids are cat_*
+  name: string; // display name
   archived: boolean;
 }
 ```
@@ -184,7 +185,10 @@ export type LedgerErrorCode =
   | 'unknown-entry'
   | 'unsupported-entry-kind'
   | 'duplicate-category-name' // new
-  | 'archived-category';      // new
+  | 'archived-category'       // new
+  | 'unknown-to-account'      // added in slice 08
+  | 'same-transfer-account'   // added in slice 08
+  | 'invalid-opening-amount'; // added in slice 06
 ```
 
 ```ts
@@ -318,13 +322,16 @@ write path would hide the product rule. No entry is changed, so history stays
 labelled and totals stay put. Unarchiving is the same operation with
 `false`.
 
-### `requireExpenseFields` — archive-aware
+### `requireEntryFields` — archive-aware
 
-The existing shared validator grows one optional argument:
+The existing shared validator grows one optional argument (renamed from
+`requireExpenseFields` in slice 07 to `requireCategorizedEntryFields`, then
+unified as `requireEntryFields` in `data/ledgerEntryWrite.ts`):
 
 ```ts
-async function requireExpenseFields(
-  input: ExpenseInput,
+async function requireEntryFields(
+  db: BudgetDatabase,
+  draft: CategorizedEntryDraft,
   options?: { allowArchivedCategoryId?: string },
 ): Promise<void> {
   // amount, date, and account checks as today
@@ -444,9 +451,12 @@ const activeCategories = categories.filter((category) => !category.archived);
   `#/categories`, where the user can add or unarchive one. This covers both
   "every category archived" and the corrupt/restored "no categories at all"
   case.
-- Otherwise pass `activeCategories` to `ExpenseFields`. The shared form does
+- Otherwise pass `activeCategories` to `ExpenseFields` (now
+  `CategorizedEntryFields`, renamed in slice 07). The shared form does
   not need a new filter parameter; the screen supplies the filtered list.
-- `expenseFieldErrors` gains `archived-category` →
+- `expenseFieldErrors` (now `entryFieldErrors` in
+  `app/entryFieldErrors.ts`) gains
+  `archived-category` →
   `{ category: 'That category is archived. Choose another.' }` for the stale
   tab or stale list case.
 - No category management is added inline. Adding and renaming stay on the

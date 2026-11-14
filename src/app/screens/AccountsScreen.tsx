@@ -13,7 +13,7 @@ import type {
   LedgerErrorCode,
 } from '../../data/ledger';
 import { LedgerError } from '../../data/ledger';
-import { ACCOUNT_TYPE_LABELS } from '../labels';
+import { ACCOUNT_TYPE_LABELS, ACCOUNT_TYPES } from '../labels';
 import { navigate } from '../router';
 
 function accountErrorMessage(code: LedgerErrorCode): string {
@@ -506,9 +506,11 @@ export function AccountsScreen({ ledger }: { ledger: Ledger }) {
             value={type}
             onChange={(event) => setType(event.target.value as AccountType)}
           >
-            <option value="checking">Checking</option>
-            <option value="savings">Savings</option>
-            <option value="credit">Credit card</option>
+            {ACCOUNT_TYPES.map((accountType) => (
+              <option key={accountType} value={accountType}>
+                {ACCOUNT_TYPE_LABELS[accountType]}
+              </option>
+            ))}
           </select>
         </div>
         <div className="field">

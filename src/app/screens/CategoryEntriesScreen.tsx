@@ -3,30 +3,8 @@ import type { MonthKey } from '../../domain/types';
 import { formatMonth } from '../../domain/calendar';
 import { formatAmount } from '../../domain/money';
 import type { EntryListItem, Ledger } from '../../data/ledger';
-import { ACCOUNT_TYPE_LABELS } from '../labels';
+import { accountWithTypeLabel } from '../labels';
 import { navigate } from '../router';
-
-function accountLabel(row: EntryListItem, ambiguousNames: Set<string>): string {
-  if (row.accountType !== null && ambiguousNames.has(row.accountName)) {
-    return `${row.accountName} · ${ACCOUNT_TYPE_LABELS[row.accountType]}`;
-  }
-  return row.accountName;
-}
-
-function duplicateAccountNames(rows: EntryListItem[]): Set<string> {
-  const idsByName = new Map<string, Set<string>>();
-  for (const row of rows) {
-    if (row.accountType === null) {
-      continue;
-    }
-    const ids = idsByName.get(row.accountName) ?? new Set<string>();
-    ids.add(row.accountId);
-    idsByName.set(row.accountName, ids);
-  }
-  return new Set(
-    [...idsByName].filter(([, ids]) => ids.size > 1).map(([name]) => name),
-  );
-}
 
 export function CategoryEntriesScreen({
   ledger,
@@ -52,7 +30,6 @@ export function CategoryEntriesScreen({
     settings.currency,
     settings.currencyExponent,
   );
-  const ambiguousNames = duplicateAccountNames(entries.rows);
 
   return (
     <section>
@@ -74,7 +51,10 @@ export function CategoryEntriesScreen({
               settings.currency,
               settings.currencyExponent,
             );
-            const label = accountLabel(row, ambiguousNames);
+            const label = accountWithTypeLabel(
+              row.accountName,
+              row.accountType,
+            );
             return (
               <li key={row.id}>
                 <button

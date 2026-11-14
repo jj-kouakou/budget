@@ -155,6 +155,7 @@ export interface Settings {
   currency: string;         // ISO 4217
   currencyExponent: number; // 2 for CAD
   lastAccountId?: string;
+  lastBackupAt?: string;    // added in slice 03; ISO instant, never in a backup
 }
 ```
 
@@ -184,12 +185,15 @@ export interface CategorySpend {
   categoryId: string;
   name: string;
   amountMinor: number;
+  previousAmountMinor: number; // added in slice 05
 }
 
 export interface MonthSummary {
   month: MonthKey;
   totalMinor: number;
-  rows: CategorySpend[]; // amount desc, then name asc
+  previousMonth: MonthKey | null;    // added in slice 05; null only at MIN_MONTH
+  previousMonthHasSpending: boolean; // added in slice 05
+  rows: CategorySpend[]; // current-month spend desc, then previous-only desc
 }
 
 export interface Ledger {
@@ -211,6 +215,11 @@ export interface Ledger {
 export function createLedger(db: BudgetDatabase): Ledger;
 ```
 
+As built today `Ledger` has 28 methods; slices 02–08 added the rest
+(`updateExpense`, `deleteExpense`, `getEntry`, `categoryEntries`, the category,
+transfer, income, account-balance, and backup methods). The full interface is
+`ledgerShared.ts:127-162`.
+
 ```ts
 export type LedgerErrorCode =
   | 'invalid-name'
@@ -218,10 +227,21 @@ export type LedgerErrorCode =
   | 'invalid-amount'
   | 'invalid-date'
   | 'unknown-account'
-  | 'unknown-category';
+  | 'unknown-category'
+  | 'unknown-entry'           // added in slice 02
+  | 'unsupported-entry-kind'  // added in slice 02
+  | 'duplicate-category-name' // added in slice 04
+  | 'archived-category'       // added in slice 04
+  | 'unknown-to-account'      // added in slice 08
+  | 'same-transfer-account'   // added in slice 08
+  | 'invalid-opening-amount'; // added in slice 06
 
 export class LedgerError extends Error {
-  constructor(readonly code: LedgerErrorCode, message: string) {
+  constructor(
+    readonly code: LedgerErrorCode,
+    message: string,
+    readonly existingCategoryName?: string, // added in slice 04
+  ) {
     super(message);
   }
 }
@@ -232,10 +252,13 @@ the message.
 
 ## Write path
 
-`addExpense` is the **only path that writes an `Entry`** — the slice-1 form of
-the north star's single `createEntry`. No component writes to `entries`
-directly. When income, transfers, and opening balances arrive, they extend this
-function; they do not add a second entry write path.
+`addExpense` was the **only path that writes an `Entry`** in this slice. No
+component writes to `entries` directly, and that still holds: every write goes
+through a `Ledger` method. As built today the five entry-writing paths —
+`addExpense`, `addIncome`, `addTransfer`, `addAccount` (optional opening), and
+`setOpeningBalance` — all insert through `createEntry` in
+`data/ledgerEntryWrite.ts`, which validates the kind's rules before writing.
+Corrections re-run the same validator before updating.
 
 Inside one Dexie `rw` transaction over `accounts`, `categories`, `entries`,
 and `settings`:
@@ -282,9 +305,11 @@ Deliberately absent:
 
 - Create `settings` if absent:
   `{ id: 'app', currency: 'CAD', currencyExponent: 2 }`.
-- Insert any missing starter category by its stable id. Never overwrite an
-  existing row, so a category archived in a later slice stays archived across
-  boots.
+- Seed the starter categories **only when the settings row is absent** (first
+  run), inserting any missing one by its stable id and never overwriting an
+  existing row. Slice 03 changed this from "insert any missing starter
+  category on every boot" so a restore cannot re-add a category the restored
+  ledger does not contain.
 - Do **not** create accounts. First-run state is "zero accounts", which the UI
   uses as its setup gate.
 
@@ -307,7 +332,8 @@ Ids are stable and human-readable; entries reference them. User-created
 categories in slice 4 will use UUIDs; the type stays an opaque string.
 
 `getSettings()` assumes `initialize()` has run. `listCategories()` returns all
-categories sorted by name; there is nothing archived to filter yet.
+categories sorted by name; there is nothing archived to filter yet. (Slice 04
+changed the order to active first, then archived, name asc, id asc.)
 
 ## Read path — month summary
 

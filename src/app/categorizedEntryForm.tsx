@@ -1,34 +1,7 @@
 import type { Account, Category } from '../domain/types';
-import type { LedgerErrorCode } from '../data/ledger';
 import { ChoiceGroup } from './choiceGroup';
+import type { EntryFieldErrors } from './entryFieldErrors';
 import { accountWithTypeLabel } from './labels';
-
-export interface CategorizedEntryFieldErrors {
-  amount?: string;
-  category?: string;
-  account?: string;
-  date?: string;
-  form?: string;
-}
-
-export function categorizedEntryFieldErrors(
-  code: LedgerErrorCode,
-): CategorizedEntryFieldErrors | null {
-  switch (code) {
-    case 'invalid-amount':
-      return { amount: 'Enter an amount greater than zero.' };
-    case 'invalid-date':
-      return { date: 'Choose a valid date.' };
-    case 'unknown-account':
-      return { account: 'That account no longer exists. Choose another.' };
-    case 'unknown-category':
-      return { category: 'That category no longer exists. Choose another.' };
-    case 'archived-category':
-      return { category: 'That category is archived. Choose another.' };
-    default:
-      return null;
-  }
-}
 
 export function CategorizedEntryFields({
   idPrefix,
@@ -58,8 +31,8 @@ export function CategorizedEntryFields({
   accounts: Account[];
   categories: Category[];
   archivedCategoryId?: string;
-  errors: CategorizedEntryFieldErrors;
-  onClearError: (field: keyof CategorizedEntryFieldErrors) => void;
+  errors: EntryFieldErrors;
+  onClearError: (field: keyof EntryFieldErrors) => void;
 }) {
   return (
     <>

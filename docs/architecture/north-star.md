@@ -24,8 +24,11 @@ Entries are a single collection with a `kind` discriminator:
 
 `opening` is the only kind whose stored amount is signed, because an account
 can start in debt (a card owing $240 opens at `-24000`) or in credit. All other
-kinds store a positive magnitude and derive direction from `kind`. Exactly one
-write path (`createEntry`) enforces this.
+kinds store a positive magnitude and derive direction from `kind`. Every kind
+is written through a validated ledger method (`addExpense`, `addIncome`,
+`addTransfer`, `addAccount`'s optional opening, and `setOpeningBalance`); no
+entry is written without its kind's rules, and the backup parser re-checks the
+same rule on restore. There is no single `createEntry`.
 
 ```mermaid
 erDiagram

@@ -188,17 +188,15 @@ describe('AddIncomeScreen', () => {
   });
 
   it('requires an account when none exists', async () => {
-    const user = userEvent.setup();
-
     await renderForm();
-    await user.type(screen.getByLabelText('Amount'), '100');
-    await selectCategory('Other');
-    await user.click(screen.getByRole('button', { name: 'Save' }));
 
     expect(
-      await screen.findByText('Choose an account.'),
+      screen.getByText('Add an account before recording income.'),
     ).toBeInTheDocument();
-    expect(await db.entries.count()).toBe(0);
+    expect(
+      screen.getByRole('button', { name: 'Accounts' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText('Amount')).not.toBeInTheDocument();
   });
 
   it('rejects a cleared date', async () => {
@@ -274,6 +272,7 @@ describe('AddIncomeScreen', () => {
       name: 'Checking',
       type: 'checking',
     });
+    await ledger.addAccount({ name: 'Savings', type: 'savings' });
 
     await renderForm();
     await user.type(screen.getByLabelText('Amount'), '100');

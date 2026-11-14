@@ -175,7 +175,7 @@ flowchart LR
     Home["HomeScreen"]
     Income["IncomeScreen"]
     AddIncome["AddIncomeScreen"]
-    EditIncome["IncomeEditorScreen"]
+    EditIncome["EntryEditorScreen"]
   end
   Home -->|"Income action"| Income
   Income -->|"Add income"| AddIncome
@@ -189,8 +189,9 @@ flowchart LR
 ```
 
 - **`data/ledger`** owns the income read model, the three mutations, and the
-  shared validation/insert/ordering helpers. The helpers are private, next to
-  the existing `insertEntry`.
+  shared validation/insert/ordering helpers. As built, validation and insert
+  are `requireEntryFields` and `createEntry` in
+  `data/ledgerEntryWrite.ts`.
 - **`domain`** is unchanged. `Entry` already has `kind: 'income'` and
   `categoryId`; `domain/money` already parses and formats amounts;
   `domain/calendar` already validates dates and defaults today.
@@ -224,11 +225,12 @@ export interface IncomeListItem {
 }
 
 export interface Ledger {
-  // unchanged: initialize, listAccounts, addAccount, renameAccount,
-  // listCategories, addCategory, renameCategory, setCategoryArchived,
-  // addExpense, updateExpense, deleteExpense, listTransfers, addTransfer,
-  // updateTransfer, deleteTransfer, getEntry, categoryEntries, monthSummary,
-  // getSettings, readBackupData, restoreBackup, markBackupSaved
+  // unchanged: initialize, listAccounts, listAccountBalances, addAccount,
+  // setOpeningBalance, renameAccount, listCategories, addCategory,
+  // renameCategory, setCategoryArchived, addExpense, updateExpense,
+  // deleteExpense, listTransfers, addTransfer, updateTransfer, deleteTransfer,
+  // getEntry, categoryEntries, monthSummary, getSettings, readBackupData,
+  // restoreBackup, markBackupSaved
 
   listIncome(): Promise<IncomeListItem[]>;              // date desc, then id desc
   addIncome(input: CategorizedEntryInput): Promise<Entry>;
@@ -279,29 +281,31 @@ export type LedgerErrorCode =
   | 'duplicate-category-name'
   | 'archived-category'
   | 'unknown-to-account'
-  | 'same-transfer-account';
+  | 'same-transfer-account'
+  | 'invalid-opening-amount'; // added in slice 06; shown here for completeness
 ```
 
 Income reuses `invalid-amount`, `invalid-date`, `unknown-account`,
 `unknown-category`, `archived-category`, `unknown-entry`, and
 `unsupported-entry-kind`. Tests assert codes, not messages.
 
-The UI maps codes with the shared `categorizedEntryFieldErrors` helper (renamed
-from `expenseFieldErrors`):
+The UI maps codes with the shared `entryFieldErrors` helper (renamed from
+`expenseFieldErrors`, then unified across kinds):
 
 ```ts
-// src/app/categorizedEntryForm.tsx
-export interface CategorizedEntryFieldErrors {
+// src/app/entryFieldErrors.ts
+export interface EntryFieldErrors {
   amount?: string;
   category?: string;
   account?: string;
+  toAccount?: string;
   date?: string;
   form?: string;
 }
 
-export function categorizedEntryFieldErrors(
+export function entryFieldErrors(
   code: LedgerErrorCode,
-): CategorizedEntryFieldErrors | null;
+): EntryFieldErrors | null;
 ```
 
 The mapping is unchanged; income and expense attach the same codes to the
@@ -312,8 +316,9 @@ same fields.
 ### Shared validation
 
 `requireExpenseFields` is renamed to `requireCategorizedEntryFields` and is
-called inside every expense and income write transaction. The rules are
-identical for both kinds:
+called inside every expense and income write transaction (later unified as
+`requireEntryFields` in `data/ledgerEntryWrite.ts`). The rules are identical
+for both kinds:
 
 1. `amountMinor` is a positive safe integer (`invalid-amount`).
 2. `isValidLocalDate(date)` (`invalid-date`).
@@ -331,12 +336,12 @@ This is an internal rename with no behaviour change for expenses.
 
 ### Shared insert
 
-`insertEntry(entry)` remains the only call site of `entries.add` in the add
-paths. `addExpense`, `addTransfer`, and `addIncome` all call it. It does not
-replace kind-specific validation; it guarantees that a new entry created by
-the app is inserted in one place, with a fresh UUID and the shape the caller
-built. Restore stays outside this helper because it bulk-replaces the whole
-ledger from a validated backup.
+`createEntry(db, draft)` is the only call site of `entries.add` in the write
+paths. `addExpense`, `addTransfer`, and `addIncome` all call it, and it runs
+the kind's validator first. It guarantees that a new entry created by the app
+is inserted in one place, with a fresh UUID and the shape the caller built.
+Restore stays outside this helper because it bulk-replaces the whole ledger
+from a validated backup.
 
 ### Shared newest-first reader
 
@@ -364,12 +369,9 @@ lists. It is private, not part of `Ledger`.
 
 One `rw` transaction over `accounts`, `categories`, and `entries`:
 
-1. `await requireCategorizedEntryFields(input)`.
-2. Build one row:
-   `{ id: crypto.randomUUID(), kind: 'income', date, amountMinor,
-   accountId: input.accountId, categoryId: input.categoryId }`.
-3. `await insertEntry(entry)`.
-4. Return the inserted entry.
+1. `await createEntry(db, { kind: 'income', ...input })`, which validates the
+   fields and inserts one row with a fresh UUID.
+2. Return the inserted entry.
 
 No `toAccountId`, no second row, and **no settings read or write**. The
 transaction does not include `settings`, so an income write cannot change the
@@ -391,8 +393,8 @@ One `rw` transaction over `accounts`, `categories`, and `entries`:
 
 1. Read the entry; missing → `unknown-entry`.
 2. Reject unless `kind === 'income'` (`unsupported-entry-kind`).
-3. `await requireCategorizedEntryFields(input, { allowArchivedCategoryId:
-   existing.categoryId })`.
+3. `await requireEntryFields(db, { kind: 'income', ...input },
+   { allowArchivedCategoryId: existing.categoryId })`.
 4. `entries.update(id, { date, amountMinor, accountId, categoryId })`; zero
    rows updated → `unknown-entry`.
 5. Return the merged entry, with the original `id` and `kind`.
@@ -483,34 +485,32 @@ must leave `categoryEntries` unchanged.
 | Route | Screen |
 |---|---|
 | `#/income` | Income list |
-| `#/income/new` | Add income |
-| `#/income/<entryId>` | Income editor (correct or remove) |
+| `#/add/income` | Add income |
+| `#/entry/<entryId>` | Entry editor, dispatched to the income editor by the stored kind |
 
 ```ts
 // src/app/router.ts
 export type Route =
   | { name: 'home'; month: MonthKey }
   | { name: 'add' }
+  | { name: 'add-income' }   // new
+  | { name: 'add-transfer' }
   | { name: 'accounts' }
   | { name: 'backup' }
   | { name: 'categories' }
   | { name: 'category'; month: MonthKey; categoryId: string }
   | { name: 'entry'; entryId: string }
-  | { name: 'transfers' }
-  | { name: 'add-transfer' }
-  | { name: 'transfer'; entryId: string }
-  | { name: 'income' }                    // new: list
-  | { name: 'add-income' }                // new: add form
-  | { name: 'income-entry'; entryId: string }; // new: editor
+  | { name: 'income' }       // new: list
+  | { name: 'transfers' };
 ```
 
-- `#/income` is exact. `#/income/new` is checked before `#/income/<id>`, so
-  `new` is never parsed as an id.
-- `#/income/<id>` decodes the id like `#/entry/<id>`; an empty id, a slash
+- `#/income` and `#/add/income` are exact matches.
+- `#/entry/<id>` serves every kind; `EntryEditorScreen` reads the stored entry
+  and renders the expense, income, or transfer editor. An empty id, a slash
   inside the id, or a decode failure falls back to home.
-- `routeToHash` emits the three forms above.
-- `App` switches to the three screens. The first-run gate and restore flow are
-  unchanged.
+- `routeToHash` emits the forms above.
+- `App` switches to the list, add, and entry screens. The first-run gate and
+  restore flow are unchanged.
 
 ### Home
 
@@ -542,7 +542,7 @@ States:
 | No income | “No income yet.” + “Add your first income” button |
 | Income exists | Newest-first list + “Add income” button |
 
-Each row is a button that navigates to `#/income/<id>`. It shows the date, the
+Each row is a button that navigates to `#/entry/<id>`. It shows the date, the
 category, the account the money arrived in, and the amount, formatted with
 `formatAmount` and the settings currency/exponent. The accessible name
 names all four, for example:
@@ -552,7 +552,8 @@ names all four, for example:
 The visible layout may put the amount last; the accessible name must not rely
 on visual order alone. Account labels include the account type, matching the
 expense and transfer pickers, so two cards with the same name remain
-distinguishable.
+distinguishable. (The slice-02 category-entry list is the exception: it appends
+the type only when two accounts share a name.)
 
 The list has no total, no month controls, and no filters. Its empty state
 offers the add action; the add screen owns the “no category to file income
@@ -593,7 +594,7 @@ On submit:
 3. Call `ledger.addIncome({ amountMinor, categoryId, accountId, date })`.
 4. On success, navigate to `#/income`. The live query shows the new row
    immediately; the list is the confirmation surface.
-5. On `LedgerError`, map the code with `categorizedEntryFieldErrors`; an
+5. On `LedgerError`, map the code with `entryFieldErrors`; an
    unexpected error becomes a form-level “Could not save the income. Try
    again.”
 
@@ -606,9 +607,10 @@ Cancel returns to `#/income` without writing.
 
 ### Income editor
 
-`IncomeEditorScreen` reads `ledger.getEntry(entryId)`, accounts, categories, and
-settings. A missing entry or a non-income entry renders “Income not found”.
-Otherwise the form is seeded from the stored row:
+`#/entry/<id>` renders `EntryEditorScreen`, which reads the stored entry and
+hands it to the shared `EntryEditor` with `kind: 'income'`. A missing entry
+renders “Entry not found”; an entry of another kind is dispatched to that
+kind's editor. The form is seeded from the stored row:
 
 - amount via `formatAmountInput(entry.amountMinor, exponent)`;
 - category `entry.categoryId` if that category exists, else unselected with an
@@ -636,7 +638,9 @@ editors:
   the removal cannot be undone;
 - focus moves to Cancel when the panel opens;
 - Remove calls `ledger.deleteIncome(entry.id)` and navigates to `#/income`;
-- a failure leaves the row in place and shows a form error.
+- a failure leaves the row in place: `unknown-entry` and
+  `unsupported-entry-kind` switch to “Income not found”, any other error shows
+  a form error.
 
 Cancel and Back both return to `#/income` without writing.
 
@@ -647,8 +651,8 @@ generic `ChoiceGroup` moves to `app/choiceGroup.tsx`. The categorized module
 holds the component and the mapper, under kind-neutral names:
 
 ```ts
-export interface CategorizedEntryFieldErrors { … }
-export function categorizedEntryFieldErrors(code: LedgerErrorCode): …;
+export interface EntryFieldErrors { … }
+export function entryFieldErrors(code: LedgerErrorCode): EntryFieldErrors | null;
 export function CategorizedEntryFields({ … }): JSX.Element;
 ```
 
@@ -667,6 +671,15 @@ module. Reusing one form is what keeps expense and income amount/category/
 account/date behaviour identical instead of letting two copies drift, and
 moving `ChoiceGroup` to its own module keeps the transfer form from depending
 on a categorized-entry module it does not otherwise use.
+
+**Drift-check follow-up (2026-11-13).** The shared form now has one deeper
+sibling for every kind: `app/entryEditor.tsx` owns loading, the account and
+category preconditions, form state, validation, submit, error mapping, removal
+confirmation, focus, busy guards, and not-found rendering for add and edit.
+`AddExpenseScreen`, `AddIncomeScreen`, `AddTransferScreen`, and
+`EntryEditorScreen` are thin route adapters that pass navigation callbacks;
+`CategorizedEntryFields` and `TransferFields` remain the field renderers. The
+public `Ledger` interface, routes, copy, and spending reads are unchanged.
 
 ## Live updates
 
@@ -749,10 +762,11 @@ merged into a half-edited form.
 | Income mutations | `addIncome`, `updateIncome`, `deleteIncome`; no generic public entry mutation | Low; public surface only |
 | Income list | `listIncome()` returns all income, newest first; no total, month filter, or pagination | Low; read model only |
 | Settings | Income paths never write `lastAccountId`; the add form may read it | Low; device-local, not backed up |
-| Routes | `#/income`, `#/income/new`, `#/income/<id>` | Low; hash routes |
+| Routes | `#/income`, `#/add/income`, `#/entry/<id>` | Low; hash routes |
 | Shared input | `ExpenseInput` renamed to `CategorizedEntryInput` | Low; internal type |
-| Shared validation | `requireExpenseFields` renamed to `requireCategorizedEntryFields`; same rules | Low; private helper |
+| Shared validation | `requireExpenseFields` renamed to `requireCategorizedEntryFields`, later unified as `requireEntryFields`; same rules | Low; private helper |
 | Shared form | `app/expenseForm.tsx` renamed to `app/categorizedEntryForm.tsx`; expense and income use it | Low; internal seam |
+| Categorized add/edit behavior | One `app/entryEditor.tsx` owns the form lifecycle for every kind; the route screens are adapters | Low; internal seam |
 | Shared primitive | `ChoiceGroup` moved to `app/choiceGroup.tsx`; categorized-entry and transfer forms import it | Low; internal seam |
 | Shared ordering | Private `entriesOfKindNewestFirst`; transfer and income lists use it | Low; private helper |
 | Indexing | No new index; date index plus in-memory kind filter | Low; add later in a Dexie bump |

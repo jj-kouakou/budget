@@ -173,22 +173,25 @@ either returns a current-schema `BackupFile` or throws `BackupError`:
 | Envelope right but any field or row is malformed | `damaged` |
 | `schemaVersion` lower with no registered migration | `damaged` |
 
-Validation, after migration:
+Validation order, as built:
 
-- `schemaVersion` is a positive safe integer; `exportedAt` parses as a date.
-- `data` has `accounts`, `categories`, `entries` arrays and a `settings`
-  object.
-- Account: non-empty string `id` and `name`; `type` is one of the three;
-  string `createdAt`.
-- Category: non-empty string `id` and `name`; boolean `archived`.
-- Entry: non-empty string `id`; `kind` is one of the four; `date` passes
-  `isValidLocalDate`; `amountMinor` is a safe integer, positive for `expense`,
-  `income`, and `transfer`, signed for `opening`; `accountId` is a non-empty
-  string; `toAccountId` is required for `transfer`; optional `categoryId` and
-  `toAccountId` must be non-empty strings when present.
-- Settings: non-empty string `currency`; non-negative safe integer
-  `currencyExponent`.
-- Unknown extra fields are ignored.
+1. Envelope, **before** migration: `schemaVersion` is a positive safe integer,
+   the `newer-version` gate runs, `exportedAt` parses as a date, and `data` is
+   an object.
+2. Rows, **after** migration:
+   - `data` has `accounts`, `categories`, `entries` arrays and a `settings`
+     object.
+   - Account: non-empty string `id` and `name`; `type` is one of the three;
+     string `createdAt`.
+   - Category: non-empty string `id` and `name`; boolean `archived`.
+   - Entry: non-empty string `id`; `kind` is one of the four; `date` passes
+     `isValidLocalDate`; `amountMinor` is a safe integer, positive for
+     `expense`, `income`, and `transfer`, signed for `opening`; `accountId` is
+     a non-empty string; `toAccountId` is required for `transfer`; optional
+     `categoryId` and `toAccountId` must be non-empty strings when present.
+   - Settings: non-empty string `currency`; non-negative safe integer
+     `currencyExponent`.
+   - Unknown extra fields are ignored.
 
 Deliberately **not** validated:
 
@@ -309,6 +312,8 @@ export interface Ledger {
   // unchanged: initialize, listAccounts, addAccount, renameAccount,
   // listCategories, addExpense, updateExpense, deleteExpense, getEntry,
   // categoryEntries, monthSummary, getSettings
+  // (slices 04–08 add the category, transfer, income, and account-balance
+  // methods; the full interface is ledgerShared.ts:127-162)
 
   readBackupData(): Promise<BackupData>;
   restoreBackup(data: BackupData): Promise<void>;
@@ -347,6 +352,10 @@ export type Route =
   | { name: 'category'; month: MonthKey; categoryId: string }
   | { name: 'entry'; entryId: string };
 ```
+
+Slices 04–08 added `categories`, `income`, `transfers`, `add-income`, and
+`add-transfer`; `entry` now serves every kind. The current union is
+`router.ts:9-21`.
 
 `readBackupData` is named for what it returns — the ledger contents a backup
 needs, not a file. `restoreBackup` takes the already-parsed data. The format
@@ -413,6 +422,9 @@ if (!settings) {
   }
 }
 ```
+
+The whole block runs inside one `rw` transaction over `settings` and
+`categories`.
 
 Previously categories were seeded whenever one was missing. That would let a
 boot after a restore re-add a starter category the restored ledger does not
@@ -499,8 +511,9 @@ Copy may be refined in the slice spec; the codes are the contract.
    activation expired while the ledger was read) or `SecurityError` falls
    through to the next capability; any other error propagates to the screen's
    error state.
-2. **Web Share** (`navigator.canShare({ files: [file] })`): resolved share →
-   `'saved'`; `AbortError` → `'cancelled'`; any other failure falls through.
+2. **Web Share** (`navigator.share` present and
+   `navigator.canShare({ files: [file] })` true): resolved share → `'saved'`;
+   `AbortError` → `'cancelled'`; any other failure falls through.
 3. **Anchor download**: create a blob URL, click a temporary
    `<a download={file.name}>`, revoke the URL → `'unconfirmed'`.
 
@@ -530,8 +543,10 @@ than adding a dependency.
 - `await persisted()` → `'persisted'` when true, `'at-risk'` when false.
 - Any throw → `'unknown'`.
 
-`requestPersistentStorage()` memoizes one `persist()` call and resolves when
-it finishes; `readStorageStatus()` is always a fresh read. `boot` calls the
+`requestPersistentStorage()` memoizes one `persist()` call and always
+resolves: a refusal or rejection is swallowed, so the hook never throws on a
+browser that declines persistence. `readStorageStatus()` is always a fresh
+read. `boot` calls the
 request after render, as slice 1 did. The hook awaits the memoized request and
 then reads the status, so mounting both home and backup does not prompt twice,
 and a granted persistence shows up on the next read or `visibilitychange`

@@ -179,7 +179,7 @@ flowchart LR
     Home["HomeScreen"]
     Transfers["TransfersScreen"]
     AddTransfer["AddTransferScreen"]
-    EditTransfer["TransferEditorScreen"]
+    EditTransfer["EntryEditorScreen"]
   end
   Home -->|"Transfers action"| Transfers
   Transfers -->|"Add transfer"| AddTransfer
@@ -192,9 +192,10 @@ flowchart LR
   UI -. "useLiveQuery" .-> L
 ```
 
-- **`data/ledger`** owns the transfer read model, transfer validation, the
-  three mutations, and the shared entry-insert helper. The helpers are
-  private, next to `requireExpenseFields`, not a new module.
+- **`data/ledger`** owns the transfer read model, the three mutations, and the
+  shared write path. As built, every insert goes through `createEntry` in
+  `data/ledgerEntryWrite.ts`, which validates the kind's rules
+  (`requireEntryFields`); corrections re-run the same validator.
 - **`domain`** is unchanged. `Entry` already has `kind: 'transfer'`,
   `accountId`, and `toAccountId`; `domain/money` already parses and formats
   amounts; `domain/calendar` already validates dates and defaults today.
@@ -224,17 +225,18 @@ export interface TransferListItem {
   accountId: string;              // source
   accountName: string;            // "Unknown account" if the row is gone
   accountType: AccountType | null;
-  toAccountId: string;            // destination
+  toAccountId: string;            // destination; '' for a corrupt row with none
   toAccountName: string;          // "Unknown account" if the row is gone
   toAccountType: AccountType | null;
 }
 
 export interface Ledger {
-  // unchanged: initialize, listAccounts, addAccount, renameAccount,
-  // listCategories, addCategory, renameCategory, setCategoryArchived,
-  // addExpense, updateExpense, deleteExpense, getEntry, categoryEntries,
-  // monthSummary, getSettings, readBackupData, restoreBackup,
-  // markBackupSaved
+  // unchanged: initialize, listAccounts, listAccountBalances, addAccount,
+  // setOpeningBalance, renameAccount, listCategories, addCategory,
+  // renameCategory, setCategoryArchived, addExpense, updateExpense,
+  // deleteExpense, listIncome, addIncome, updateIncome, deleteIncome,
+  // getEntry, categoryEntries, monthSummary, getSettings, readBackupData,
+  // restoreBackup, markBackupSaved
 
   listTransfers(): Promise<TransferListItem[]>; // date desc, then id desc
   addTransfer(input: TransferInput): Promise<Entry>;
@@ -273,7 +275,8 @@ export type LedgerErrorCode =
   | 'duplicate-category-name'
   | 'archived-category'
   | 'unknown-to-account'       // new: transfer destination is gone
-  | 'same-transfer-account';   // new: source and destination are the same
+  | 'same-transfer-account'    // new: source and destination are the same
+  | 'invalid-opening-amount';  // added in slice 06; shown for completeness
 ```
 
 `unknown-account` keeps its existing meaning: the primary/source account is
@@ -281,55 +284,62 @@ missing. `unknown-to-account` is the destination-specific code so the form can
 attach the error to the right picker. `same-transfer-account` is form-level:
 neither picker alone is wrong. Tests assert codes, not messages.
 
-The UI maps the new codes in a `transferFieldErrors` helper:
+The UI maps the new codes in the shared `entryFieldErrors` helper:
 
 ```ts
-// src/app/transferForm.tsx
-export interface TransferFieldErrors {
+// src/app/entryFieldErrors.ts
+export interface EntryFieldErrors {
   amount?: string;
+  category?: string;
   account?: string;
   toAccount?: string;
   date?: string;
   form?: string;
 }
 
-export function transferFieldErrors(
+export function entryFieldErrors(
   code: LedgerErrorCode,
-): TransferFieldErrors | null;
+): EntryFieldErrors | null;
 ```
 
 ## Write paths
 
 ### Shared entry insert
 
-The north star requires one entry write path. The existing `addExpense` is the
-expense form of that path. This slice introduces one private helper in
-`data/ledger` and makes both creation paths call it:
+The north star requires one entry insert path. The existing `addExpense` is
+the expense form of that path. This slice introduces one helper and makes both
+creation paths call it:
 
 ```ts
-async function insertEntry(entry: Entry): Promise<Entry> {
-  await db.entries.add(entry);
-  return entry;
+// src/data/ledgerEntryWrite.ts
+export async function createEntry(
+  db: BudgetDatabase,
+  draft: EntryDraft,
+  options?: EntryWriteOptions,
+): Promise<Entry> {
+  await requireEntryFields(db, draft, options);
+  // build the row from the draft, then db.entries.add
 }
 ```
 
-`insertEntry` is the only call site of `entries.add` in the add paths. It does
-not replace the kind-specific validation; it guarantees that a new entry
-created by the app is inserted in one place, with a fresh UUID and the shape
-the caller built. `addExpense` keeps its existing behaviour, including the
-`settings.lastAccountId` write. `addTransfer` does not write settings. Restore
-is deliberately outside this helper: it uses `entries.bulkAdd` because it
-replaces the whole ledger from a validated backup.
+As built, `createEntry` is the only call site of `entries.add` in the write
+paths; slices 06 and 07 made it the third, fourth, and fifth call sites
+(`addIncome`, and the two opening paths in `data/ledgerAccounts.ts`). It is
+also the validator: `requireEntryFields` enforces each kind's rules before the
+insert, so no caller can write an entry that skips them. `addExpense` keeps
+its existing behaviour, including the `settings.lastAccountId` write.
+`addTransfer` does not write settings. Restore is deliberately outside this
+helper: it uses `entries.bulkAdd` because it replaces the whole ledger from a
+validated backup.
 
-This is an internal refactor, not a new public seam. `addExpense` will call
-`insertEntry`. If the program design splits that mechanical change into its
-own ticket, the end state is the same: every entry created through the add
-path goes through one helper, never through a screen.
+This is an internal refactor, not a new public seam. `addExpense` calls
+`createEntry`. The end state is the same: every entry created through a write
+path goes through one validated helper, never through a screen.
 
 ### Transfer validation
 
-`requireTransferFields(input)` runs inside the write transaction and is the
-only place these rules live:
+`requireEntryFields(db, { kind: 'transfer', ...input })` runs inside the write
+transaction and is the only place these rules live:
 
 1. `amountMinor` is a positive safe integer (`invalid-amount`).
 2. `isValidLocalDate(date)` (`invalid-date`).
@@ -345,12 +355,9 @@ valid; account type never enters the rule.
 
 One `rw` transaction over `accounts` and `entries`:
 
-1. `await requireTransferFields(input)`.
-2. Build one row:
-   `{ id: crypto.randomUUID(), kind: 'transfer', date, amountMinor,
-   accountId: input.accountId, toAccountId: input.toAccountId }`.
-3. `await insertEntry(entry)`.
-4. Return the inserted entry.
+1. `await createEntry(db, { kind: 'transfer', ...input })`, which validates
+   the fields and inserts one row with a fresh UUID.
+2. Return the inserted entry.
 
 No `categoryId`, no `settings` write, no second row. The source is
 `accountId`; the destination is `toAccountId`.
@@ -361,7 +368,7 @@ One `rw` transaction over `accounts` and `entries`:
 
 1. Read the entry; missing → `unknown-entry`.
 2. Reject unless `kind === 'transfer'` (`unsupported-entry-kind`).
-3. `await requireTransferFields(input)`.
+3. `await requireEntryFields(db, { kind: 'transfer', ...input })`.
 4. `entries.update(id, { date, amountMinor, accountId, toAccountId })`.
 5. Return the merged entry, with the original `id` and `kind`.
 
@@ -397,7 +404,8 @@ Inside one Dexie `r` transaction over `entries` and `accounts`:
    - source name/type from the source account, or
      `"Unknown account"` / `null` if it is gone;
    - destination name/type from the destination account, or
-     `"Unknown account"` / `null` if it is gone;
+     `"Unknown account"` / `null` if it is gone; a row with no `toAccountId`
+     yields `''` for the id;
    - the stored `date` and `amountMinor` unchanged.
 6. Return the array.
 
@@ -449,31 +457,32 @@ home summary byte-for-byte unchanged.
 | Route | Screen |
 |---|---|
 | `#/transfers` | Transfers list |
-| `#/transfers/new` | Add transfer |
-| `#/transfers/<entryId>` | Transfer editor (correct or remove) |
+| `#/add/transfer` | Add transfer |
+| `#/entry/<entryId>` | Entry editor, dispatched to the transfer editor by the stored kind |
 
 ```ts
 // src/app/router.ts
 export type Route =
   | { name: 'home'; month: MonthKey }
   | { name: 'add' }
+  | { name: 'add-income' }
+  | { name: 'add-transfer' }   // new
   | { name: 'accounts' }
   | { name: 'backup' }
   | { name: 'categories' }
   | { name: 'category'; month: MonthKey; categoryId: string }
   | { name: 'entry'; entryId: string }
-  | { name: 'transfers' }                 // new
-  | { name: 'add-transfer' }              // new
-  | { name: 'transfer'; entryId: string }; // new
+  | { name: 'income' }
+  | { name: 'transfers' };     // new
 ```
 
-- `#/transfers` is exact. `#/transfers/new` is checked before
-  `#/transfers/<id>`, so `new` is never parsed as an id.
-- `#/transfers/<id>` decodes the id like `#/entry/<id>`; an empty id, a slash
+- `#/transfers` and `#/add/transfer` are exact matches.
+- `#/entry/<id>` serves every kind; `EntryEditorScreen` reads the stored entry
+  and renders the expense, income, or transfer editor. An empty id, a slash
   inside the id, or a decode failure falls back to home.
-- `routeToHash` emits the three forms above.
-- `App` switches to the three screens. The first-run gate and restore flow are
-  unchanged.
+- `routeToHash` emits the forms above.
+- `App` switches to the list, add, and entry screens. The first-run gate and
+  restore flow are unchanged.
 
 ### Home
 
@@ -496,6 +505,7 @@ enters home's data.
 
 - `useLiveQuery(() => ledger.listTransfers(), [ledger])`
 - `useLiveQuery(() => ledger.listAccounts(), [ledger])`
+- `useLiveQuery(() => ledger.getSettings(), [ledger])` — for `formatAmount`
 
 States:
 
@@ -506,7 +516,7 @@ States:
 | No transfers, at least two accounts | “No transfers yet.” + “Add your first transfer” button |
 | Transfers exist | Newest-first list + “Add transfer” button |
 
-Each row is a button that navigates to `#/transfers/<id>`. It shows the date,
+Each row is a button that navigates to `#/entry/<id>`. It shows the date,
 the source account, the destination account, and the amount. The accessible
 name names the direction explicitly, for example:
 
@@ -539,7 +549,7 @@ On submit:
 3. Call `ledger.addTransfer({ amountMinor, accountId, toAccountId, date })`.
 4. On success, navigate to `#/transfers`. The live query shows the new row
    immediately.
-5. On `LedgerError`, map the code with `transferFieldErrors`; an unexpected
+5. On `LedgerError`, map the code with `entryFieldErrors`; an unexpected
    error becomes a form-level “Could not save the transfer. Try again.”
 
 The screen refuses the same account before the call for immediate feedback.
@@ -548,9 +558,10 @@ direct caller cannot create a self-transfer.
 
 ### Transfer editor
 
-`TransferEditorScreen` reads `ledger.getEntry(entryId)`, accounts, and
-settings. A missing entry or a non-transfer entry renders “Transfer not
-found”. Otherwise the form is seeded from the stored row:
+`#/entry/<id>` renders `EntryEditorScreen`, which reads the stored entry and
+hands it to the shared `EntryEditor` with `kind: 'transfer'`. A missing entry
+renders “Entry not found”; an entry of another kind is dispatched to that
+kind's editor. The form is seeded from the stored row:
 
 - amount via `formatAmountInput(entry.amountMinor, exponent)`;
 - source `entry.accountId` if that account exists, else unselected with an
@@ -573,14 +584,18 @@ Remove uses the same in-place confirmation pattern as the expense editor:
 - focus moves to Cancel when the panel opens;
 - Remove calls `ledger.deleteTransfer(entry.id)` and navigates to
   `#/transfers`;
-- a failure leaves the row in place and shows a form error.
+- a failure leaves the row in place: `unknown-entry` and
+  `unsupported-entry-kind` switch to “Transfer not found”, any other error
+  shows a form error.
 
 Cancel and Back both return to `#/transfers` without writing.
 
 ### Shared transfer fields
 
-`app/transferForm.tsx` holds `TransferFields`, `TransferFieldErrors`, and
-`transferFieldErrors`, mirroring `app/expenseForm.tsx`:
+`app/transferForm.tsx` holds `TransferFields`, mirroring
+`app/categorizedEntryForm.tsx` (named `app/expenseForm.tsx` before slice 07's
+rename). Field errors use the shared `EntryFieldErrors` type and
+`entryFieldErrors` mapper from `app/entryFieldErrors.ts`:
 
 - amount: text input with `inputMode="decimal"`, the same parse/format rules as
   an expense;
@@ -589,9 +604,20 @@ Cancel and Back both return to `#/transfers` without writing.
 - date: date input, same validation and accessible error wiring as the expense
   form.
 
-It reuses the existing `ChoiceGroup` from `app/expenseForm.tsx`; that component
-is already generic over `{ id, label }`. It does not reuse `ExpenseFields`,
-because a transfer has no category and has two accounts.
+It reuses the existing `ChoiceGroup` from `app/choiceGroup.tsx`; that component
+is already generic over `{ id, label }`. It does not reuse
+`CategorizedEntryFields`, because a transfer has no category and has two
+accounts. (`app/expenseForm.tsx` / `ExpenseFields` were renamed to
+`app/categorizedEntryForm.tsx` / `CategorizedEntryFields` in slice 07.)
+
+**Drift-check follow-up (2026-11-13).** The transfer add/edit lifecycle lives
+in the shared `app/entryEditor.tsx`, the same module expense and income use.
+It owns loading, the fewer-than-two-accounts precondition, form state,
+validation, submit, error mapping, removal confirmation, focus, busy guards,
+and not-found rendering. `AddTransferScreen` is a thin add adapter and
+`#/entry/<id>` dispatches to the same editor through `EntryEditorScreen`;
+`TransferFields` remains the field renderer. The public `Ledger` interface,
+routes, copy, and transfer writes are unchanged.
 
 ## Live updates
 
@@ -654,10 +680,11 @@ queries but not merged into a half-edited form.
 |---|---|---|
 | Transfer storage | One `entries` row with `kind: 'transfer'`; no `transfers` table | Low; north-star already settled it |
 | Source field | `accountId`; destination `toAccountId`; no migration | High if reversed; user-confirmed, slice-01 spec already recorded it |
-| Entry creation | Private `insertEntry` shared by `addExpense` and `addTransfer`; no public generic `createEntry` | Low; internal seam |
+| Entry creation | `createEntry(db, draft)` validates and inserts for every entry-writing path; no public generic entry mutation | Low; internal seam |
 | Transfer mutations | `addTransfer`, `updateTransfer`, `deleteTransfer`; no generic entry mutation | Low; public surface only |
+| Transfer add/edit behavior | The shared `app/entryEditor.tsx` owns the form lifecycle; the route screens are adapters | Low; internal seam |
 | Transfer list | `listTransfers()` returns an array; no month filter, no total, no pagination | Low; read model only |
-| Routes | `#/transfers`, `#/transfers/new`, `#/transfers/<id>` | Low; hash routes |
+| Routes | `#/transfers`, `#/add/transfer`, `#/entry/<id>` | Low; hash routes |
 | Settings | Transfer write paths never write `lastAccountId`; the add form may read it to preselect the source | Low; field keeps its expense meaning |
 | Indexing | No new index; date index plus in-memory kind filter | Low; add later in a Dexie bump |
 | Backup | v1 unchanged; transfers already round-trip | Low; no data-model change |

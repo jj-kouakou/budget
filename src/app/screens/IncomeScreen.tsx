@@ -32,7 +32,7 @@ function IncomeRows({
               type="button"
               aria-label={`Income: ${row.categoryName}, ${amount}, ${accountLabel}, ${row.date}`}
               onClick={() =>
-                navigate({ name: 'income-entry', entryId: row.id })
+                navigate({ name: 'entry', entryId: row.id })
               }
             >
               <span className="income-category">{row.categoryName}</span>

@@ -78,7 +78,7 @@ describe('TransfersScreen', () => {
       screen.getByRole('button', { name: /^Transfer from Checking/ }),
     );
 
-    expect(window.location.hash).toBe(`#/transfers/${entry.id}`);
+    expect(window.location.hash).toBe(`#/entry/${entry.id}`);
   });
 
   it('shows the empty state with a first-transfer action', async () => {
@@ -91,7 +91,7 @@ describe('TransfersScreen', () => {
       screen.getByRole('button', { name: 'Add your first transfer' }),
     );
 
-    expect(window.location.hash).toBe('#/transfers/new');
+    expect(window.location.hash).toBe('#/add/transfer');
   });
 
   it('renders rows in ledger order with labels, amounts, and dates', async () => {
@@ -155,7 +155,7 @@ describe('TransfersScreen', () => {
     await renderList();
     await user.click(screen.getByRole('button', { name: /^Transfer from/ }));
 
-    expect(window.location.hash).toBe(`#/transfers/${entry.id}`);
+    expect(window.location.hash).toBe(`#/entry/${entry.id}`);
   });
 
   it('keeps a row whose account is missing clickable', async () => {
@@ -173,7 +173,7 @@ describe('TransfersScreen', () => {
     expect(screen.getByText(/Unknown account/)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /^Transfer from/ }));
 
-    expect(window.location.hash).toBe(`#/transfers/${entry.id}`);
+    expect(window.location.hash).toBe(`#/entry/${entry.id}`);
   });
 
   it('updates through the live query after a transfer is added', async () => {

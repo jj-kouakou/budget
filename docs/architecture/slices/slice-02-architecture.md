@@ -100,8 +100,11 @@ flowchart LR
   cover the editor and list headers.
 - **`data/db`** is still not imported by the UI.
 - **`data/ledger`** grows the read models and lifecycle operations. A private
-  `requireExpenseFields` helper becomes the single validation rule set shared
-  by add and update; it is an internal seam, not part of `Ledger`.
+  validator (`requireExpenseFields` here; renamed
+  `requireCategorizedEntryFields` in slice 07 and unified as
+  `requireEntryFields` in `data/ledgerEntryWrite.ts`) becomes the single
+  validation rule set shared by add and update; it is an internal seam, not
+  part of `Ledger`.
 - **`app` / `ui`** gains two screens and two routes. No Dexie imports outside
   `data/`.
 
@@ -112,7 +115,7 @@ Tests cross the same `Ledger` seam callers use.
 
 ```ts
 // src/data/ledger.ts
-export interface ExpenseInput {
+export interface CategorizedEntryInput { // named ExpenseInput in this slice
   amountMinor: number;
   categoryId: string;
   accountId: string;
@@ -142,8 +145,8 @@ export interface Ledger {
   // unchanged: initialize, listAccounts, addAccount, renameAccount,
   // listCategories, monthSummary, getSettings
 
-  addExpense(input: ExpenseInput): Promise<Entry>;          // renamed input type only
-  updateExpense(id: string, input: ExpenseInput): Promise<Entry>;
+  addExpense(input: CategorizedEntryInput): Promise<Entry>; // ExpenseInput in this slice
+  updateExpense(id: string, input: CategorizedEntryInput): Promise<Entry>;
   deleteExpense(id: string): Promise<Entry>;                // returns the removed snapshot
   getEntry(id: string): Promise<Entry | null>;
   categoryEntries(month: MonthKey, categoryId: string): Promise<CategoryEntries>;
@@ -165,9 +168,15 @@ export type Route =
   | { name: 'entry'; entryId: string };
 ```
 
+Slices 03–08 added `backup`, `categories`, `income`, `transfers`,
+`add-income`, and `add-transfer`; `entry` now serves every kind, dispatching on
+the stored entry (`router.ts:9-21`). The current scheme is `#/add`,
+`#/add/income`, `#/add/transfer`, and `#/entry/<id>`.
+
 `AddExpenseInput` is renamed to `ExpenseInput` because add and update accept the
-same four fields. There is no compatibility alias; the only caller passes an
-object literal.
+same four fields; slice 07 renamed it again to `CategorizedEntryInput` when
+income reused the same shape. There is no compatibility alias; the only caller
+passes an object literal.
 
 ```ts
 export type LedgerErrorCode =
@@ -178,7 +187,12 @@ export type LedgerErrorCode =
   | 'unknown-account'
   | 'unknown-category'
   | 'unknown-entry'
-  | 'unsupported-entry-kind';
+  | 'unsupported-entry-kind'
+  | 'duplicate-category-name' // added in slice 04
+  | 'archived-category'       // added in slice 04
+  | 'unknown-to-account'      // added in slice 08
+  | 'same-transfer-account'   // added in slice 08
+  | 'invalid-opening-amount'; // added in slice 06
 ```
 
 The UI maps codes to text; tests assert codes. `getEntry` returns `null` for a
@@ -186,8 +200,9 @@ missing id rather than throwing, because a stale URL is a normal read outcome.
 
 ## Write paths
 
-`requireExpenseFields(input)` is called inside the write transaction and is
-the only place these four rules live:
+`requireEntryFields(input)` (named `requireExpenseFields` here) is called
+inside the write transaction and is the only place these four rules live —
+slice 04 adds a fifth, `archived-category`:
 
 1. `amountMinor` is a positive safe integer (`invalid-amount`).
 2. `isValidLocalDate(date)` (`invalid-date`).
@@ -203,7 +218,7 @@ the row.
 
 1. Read the entry; missing → `unknown-entry`.
 2. Reject unless `kind === 'expense'` (`unsupported-entry-kind`).
-3. Run `requireExpenseFields(input)`.
+3. Run `requireEntryFields(input)`.
 4. `entries.update(id, { date, amountMinor, accountId, categoryId })`.
 5. Return the merged entry, with the original `id` and `kind`.
 
@@ -321,8 +336,9 @@ Screen behaviour:
   for the displayed month. Every row is tappable, including `Uncategorized`.
 - **Category list:** heading names the category and the month, with a total
   that must match the home row. Rows are newest first and show amount, date,
-  and account name (plus account type when it disambiguates two same-named
-  accounts). Back returns to `#/?m=<month>`. Tapping a row opens the editor.
+  and the account name with its type (`Name · Type`, the same label as every
+  other list and picker). Back returns to `#/?m=<month>`. Tapping a row opens
+  the editor.
 - **Editor:** amount, category, account, and date are prefilled from the
   stored entry; amount is rendered by `formatAmountInput`. The same client-side
   checks and `LedgerErrorCode` messages as the add form apply. Back leaves
@@ -350,7 +366,7 @@ No new dependency. `useLiveQuery` remains the only data-sync mechanism.
 |---|---|
 | Tapping a category opens that month's entries, newest first, summing to the row | `categoryEntries` + the shared predicate invariant; `rows` sorted date desc |
 | Each listed entry shows amount, date, account | `EntryListItem` |
-| Open any entry and change amount, category, account, or date | `getEntry` + `ExpenseInput` on `updateExpense` |
+| Open any entry and change amount, category, account, or date | `getEntry` + `CategorizedEntryInput` on `updateExpense` |
 | Category change moves the amount between rows immediately | one-row `update`; live `monthSummary` queries |
 | Date change moves the entry to its new month | date is an editable field; save routes to `monthOf(updated.date)` |
 | Save shows the list that now holds the entry | save navigates to the returned entry's month and category |
@@ -411,7 +427,7 @@ sides.
 | How is an opened entry addressed so back/save return to the right list? | `#/entry/<id>` only; the stored entry supplies its month and category. |
 | Does the drill-down need a new index? | No. `entries.date` narrows to the month; category filtering is in memory. |
 | Does removal delete the row or record something else? | Hard delete, confirmed; no tombstone or audit row. |
-| How does edit reuse the single write path? | `requireExpenseFields` is shared; `addExpense` stays the only creation path, and update/delete are lifecycle operations on one id. |
+| How does edit reuse the single write path? | `requireEntryFields` is shared; `addExpense` stays the only creation path in this slice, and update/delete are lifecycle operations on one id. |
 | New read model or expose from `monthSummary`? | New `categoryEntries` read model; `monthSummary` stays the home aggregate. |
 | Is `CONTEXT.md`'s `Entry` definition corrected? | Yes: four kinds (expense, income, transfer, opening), plus correction/removal terms. |
 

@@ -67,7 +67,7 @@ describe('IncomeScreen', () => {
       screen.getByRole('button', { name: 'Add your first income' }),
     );
 
-    expect(window.location.hash).toBe('#/income/new');
+    expect(window.location.hash).toBe('#/add/income');
   });
 
   it('renders rows in ledger order with all four fields', async () => {
@@ -111,7 +111,7 @@ describe('IncomeScreen', () => {
       screen.getByRole('button', { name: /^Income: Other/ }),
     );
 
-    expect(window.location.hash).toBe(`#/income/${entry.id}`);
+    expect(window.location.hash).toBe(`#/entry/${entry.id}`);
   });
 
   it('keeps rows with missing references clickable', async () => {
@@ -143,7 +143,7 @@ describe('IncomeScreen', () => {
       screen.getByRole('button', { name: /^Income: Uncategorized/ }),
     );
 
-    expect(window.location.hash).toBe('#/income/missing-category');
+    expect(window.location.hash).toBe('#/entry/missing-category');
   });
 
   it('updates after an income is added', async () => {

@@ -141,10 +141,10 @@ describe('App', () => {
     ).toBeInTheDocument();
   });
 
-  it('renders the add transfer form from #/transfers/new with two accounts', async () => {
+  it('renders the add transfer form from #/add/transfer with two accounts', async () => {
     await ledger.addAccount({ name: 'Checking', type: 'checking' });
     await ledger.addAccount({ name: 'Visa', type: 'credit' });
-    window.location.hash = '#/transfers/new';
+    window.location.hash = '#/add/transfer';
 
     render(<App ledger={ledger} />);
 
@@ -155,8 +155,8 @@ describe('App', () => {
 
   it.each([
     '#/transfers',
-    '#/transfers/new',
-    '#/transfers/entry-1',
+    '#/add/transfer',
+    '#/entry/entry-1',
   ])('forces accounts from a zero-account %s deep link', async (hash) => {
     window.location.hash = hash;
 
@@ -180,7 +180,7 @@ describe('App', () => {
       toAccountId: visa.id,
       date: '2026-11-02',
     });
-    window.location.hash = `#/transfers/${entry.id}`;
+    window.location.hash = `#/entry/${entry.id}`;
 
     render(<App ledger={ledger} />);
 
@@ -189,14 +189,14 @@ describe('App', () => {
     ).toBeInTheDocument();
   });
 
-  it('renders transfer not found for an unknown transfer id', async () => {
+  it('renders entry not found for an unknown id', async () => {
     await ledger.addAccount({ name: 'Checking', type: 'checking' });
-    window.location.hash = '#/transfers/missing';
+    window.location.hash = '#/entry/missing';
 
     render(<App ledger={ledger} />);
 
     expect(
-      await screen.findByRole('heading', { name: 'Transfer not found' }),
+      await screen.findByRole('heading', { name: 'Entry not found' }),
     ).toBeInTheDocument();
   });
 
@@ -376,9 +376,9 @@ describe('App backup and restore', () => {
     ).toBeInTheDocument();
   });
 
-  it('renders the add income form from #/income/new with one account', async () => {
+  it('renders the add income form from #/add/income with one account', async () => {
     await ledger.addAccount({ name: 'Checking', type: 'checking' });
-    window.location.hash = '#/income/new';
+    window.location.hash = '#/add/income';
 
     render(<App ledger={ledger} />);
 
@@ -398,7 +398,7 @@ describe('App backup and restore', () => {
       accountId: checking.id,
       date: '2026-11-02',
     });
-    window.location.hash = `#/income/${entry.id}`;
+    window.location.hash = `#/entry/${entry.id}`;
 
     render(<App ledger={ledger} />);
 
@@ -407,21 +407,21 @@ describe('App backup and restore', () => {
     ).toBeInTheDocument();
   });
 
-  it('renders Income not found for an unknown income id', async () => {
+  it('renders entry not found for an unknown income id', async () => {
     await ledger.addAccount({ name: 'Checking', type: 'checking' });
-    window.location.hash = '#/income/missing';
+    window.location.hash = '#/entry/missing';
 
     render(<App ledger={ledger} />);
 
     expect(
-      await screen.findByRole('heading', { name: 'Income not found' }),
+      await screen.findByRole('heading', { name: 'Entry not found' }),
     ).toBeInTheDocument();
   });
 
   it.each([
     '#/income',
-    '#/income/new',
-    '#/income/entry-1',
+    '#/add/income',
+    '#/entry/entry-1',
   ])('forces accounts from a zero-account %s deep link', async (hash) => {
     window.location.hash = hash;
 
@@ -445,7 +445,7 @@ describe('App backup and restore', () => {
       accountId: checking.id,
       date: '2026-11-02',
     });
-    window.location.hash = `#/income/${entry.id}`;
+    window.location.hash = `#/entry/${entry.id}`;
 
     render(<App ledger={ledger} />);
     await screen.findByRole('heading', { name: 'Correct income' });

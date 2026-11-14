@@ -17,6 +17,13 @@ describe('parseHash', () => {
     ['#/?m=2026-11&m=2025-01', { name: 'home', month: '2026-11' }],
     ['#/add', { name: 'add' }],
     ['#/add?m=2026-11', { name: 'add' }],
+    ['#/add/income', { name: 'add-income' }],
+    ['#/add/income?x=1', { name: 'add-income' }],
+    ['#/add/transfer', { name: 'add-transfer' }],
+    ['#/add/transfer?x=1', { name: 'add-transfer' }],
+    ['#/add/income/', { name: 'home', month: '2026-11' }],
+    ['#/add/transfer/', { name: 'home', month: '2026-11' }],
+    ['#/add/', { name: 'home', month: '2026-11' }],
     ['#/accounts', { name: 'accounts' }],
     ['#/accounts?x=1', { name: 'accounts' }],
     ['#/backup', { name: 'backup' }],
@@ -43,44 +50,26 @@ describe('parseHash', () => {
     ['#/entry/', { name: 'home', month: '2026-11' }],
     ['#/entry/a/b', { name: 'home', month: '2026-11' }],
     ['#/entry/%E0%A4%A', { name: 'home', month: '2026-11' }],
-    ['#/transfers', { name: 'transfers' }],
-    ['#/transfers?x=1', { name: 'transfers' }],
-    ['#/transfers/new', { name: 'add-transfer' }],
-    ['#/transfers/new?x=1', { name: 'add-transfer' }],
-    ['#/transfers/new/', { name: 'home', month: '2026-11' }],
-    ['#/transfers/', { name: 'home', month: '2026-11' }],
-    ['#/transfers//', { name: 'home', month: '2026-11' }],
-    ['#/transfers/abc', { name: 'transfer', entryId: 'abc' }],
-    [
-      '#/transfers/abc?m=2026-11',
-      { name: 'transfer', entryId: 'abc' },
-    ],
-    ['#/transfers/a/b', { name: 'home', month: '2026-11' }],
-    ['#/transfers/%E0%A4%A', { name: 'home', month: '2026-11' }],
-    ['#/transfers/abc%2Fdef', { name: 'transfer', entryId: 'abc/def' }],
     ['#/income', { name: 'income' }],
     ['#/income?x=1', { name: 'income' }],
-    ['#/income/new', { name: 'add-income' }],
-    ['#/income/new?x=1', { name: 'add-income' }],
-    ['#/income/new/', { name: 'home', month: '2026-11' }],
-    ['#/income/', { name: 'home', month: '2026-11' }],
-    ['#/income//', { name: 'home', month: '2026-11' }],
-    ['#/income/abc', { name: 'income-entry', entryId: 'abc' }],
-    [
-      '#/income/abc?m=2026-11',
-      { name: 'income-entry', entryId: 'abc' },
-    ],
-    ['#/income/a/b', { name: 'home', month: '2026-11' }],
-    ['#/income/%E0%A4%A', { name: 'home', month: '2026-11' }],
-    [
-      '#/income/abc%2Fdef',
-      { name: 'income-entry', entryId: 'abc/def' },
-    ],
+    ['#/transfers', { name: 'transfers' }],
+    ['#/transfers?x=1', { name: 'transfers' }],
     ['#/nope', { name: 'home', month: '2026-11' }],
-    ['#/add/', { name: 'home', month: '2026-11' }],
     ['#//', { name: 'home', month: '2026-11' }],
   ])('parses %j', (hash, expected) => {
     expect(parseHash(hash, '2026-11-02')).toEqual(expected);
+  });
+
+  it.each([
+    '#/income/new',
+    '#/income/abc',
+    '#/transfers/new',
+    '#/transfers/abc',
+  ])('treats the retired route %s as home', (hash) => {
+    expect(parseHash(hash, '2026-11-02')).toEqual({
+      name: 'home',
+      month: '2026-11',
+    });
   });
 });
 
@@ -90,6 +79,8 @@ describe('routeToHash', () => {
       '#/?m=2026-11',
     );
     expect(routeToHash({ name: 'add' })).toBe('#/add');
+    expect(routeToHash({ name: 'add-income' })).toBe('#/add/income');
+    expect(routeToHash({ name: 'add-transfer' })).toBe('#/add/transfer');
     expect(routeToHash({ name: 'accounts' })).toBe('#/accounts');
     expect(routeToHash({ name: 'backup' })).toBe('#/backup');
     expect(routeToHash({ name: 'categories' })).toBe('#/categories');
@@ -103,15 +94,8 @@ describe('routeToHash', () => {
     expect(routeToHash({ name: 'entry', entryId: '3f1c-abc' })).toBe(
       '#/entry/3f1c-abc',
     );
-    expect(routeToHash({ name: 'transfers' })).toBe('#/transfers');
-    expect(routeToHash({ name: 'add-transfer' })).toBe('#/transfers/new');
-    expect(routeToHash({ name: 'transfer', entryId: '3f1c-abc' })).toBe(
-      '#/transfers/3f1c-abc',
-    );
     expect(routeToHash({ name: 'income' })).toBe('#/income');
-    expect(routeToHash({ name: 'add-income' })).toBe('#/income/new');
-    expect(routeToHash({ name: 'income-entry', entryId: '3f1c-abc' }))
-      .toBe('#/income/3f1c-abc');
+    expect(routeToHash({ name: 'transfers' })).toBe('#/transfers');
   });
 
   it('round-trips a category id containing reserved characters', () => {
@@ -131,36 +115,6 @@ describe('routeToHash', () => {
     };
 
     expect(parseHash(routeToHash(route), '2026-11-02')).toEqual(route);
-  });
-
-  it('round-trips a transfer id containing reserved characters', () => {
-    const route = {
-      name: 'transfer' as const,
-      entryId: 'transfer &? #/space',
-    };
-
-    expect(parseHash(routeToHash(route), '2026-11-02')).toEqual(route);
-  });
-
-  it('round-trips an income id containing reserved characters', () => {
-    const route = {
-      name: 'income-entry' as const,
-      entryId: 'income &? #/space',
-    };
-
-    expect(parseHash(routeToHash(route), '2026-11-02')).toEqual(route);
-  });
-
-  it('never parses the add hash as an income id', () => {
-    expect(parseHash('#/income/new', '2026-11-02')).toEqual({
-      name: 'add-income',
-    });
-  });
-
-  it('never parses the add hash as a transfer id', () => {
-    expect(parseHash('#/transfers/new', '2026-11-02')).toEqual({
-      name: 'add-transfer',
-    });
   });
 });
 

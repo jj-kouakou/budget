@@ -140,7 +140,7 @@ describe('CategoryEntriesScreen', () => {
     expect(window.location.hash).toBe('#/?m=2026-11');
   });
 
-  it('suffixes duplicate account names and leaves a unique name alone', async () => {
+  it('always shows the account type', async () => {
     const visaCredit = await ledger.addAccount({
       name: 'Visa',
       type: 'credit',
@@ -158,7 +158,9 @@ describe('CategoryEntriesScreen', () => {
     const rows = await screen.findAllByRole('listitem');
 
     expect(
-      within(rows[0]!).getByRole('button', { name: /, Checking$/ }),
+      within(rows[0]!).getByRole('button', {
+        name: /, Checking · Checking$/,
+      }),
     ).toBeInTheDocument();
     expect(
       within(rows[1]!).getByRole('button', {

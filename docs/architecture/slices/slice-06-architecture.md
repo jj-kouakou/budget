@@ -107,8 +107,8 @@ a second domain term; code and docs keep `opening`. `CONTEXT.md` is unchanged.
   is `checking`, `savings`, or `credit`; card type is derived from the
   account.
 - `Ledger` remains the only persistence seam; there is no repository
-  interface and no fake adapter. Every new entry row is inserted through the
-  private `insertEntry`; corrections and removals keep their per-kind paths.
+  interface and no fake adapter. Every new entry row is inserted through
+  `createEntry`; corrections and removals keep their per-kind public methods.
 - Screens read through `useLiveQuery`; Dexie invalidation drives updates. No
   manual cache, event bus, or refresh button.
 - Correction is in place and removal is final (slice 2). This slice adds no
@@ -210,8 +210,10 @@ flowchart LR
 
 - **`data/ledger`** owns the balance read model, the opening write path, the
   one-opening collapse, the account comparator, and the opening-date
-  derivation. The helpers are private, next to `insertEntry` and
-  `requireCategorizedEntryFields`.
+  derivation. As built, openings are inserted through `createEntry` and their
+  amount is checked by `requireOpeningAmount`, both in
+  `data/ledgerEntryWrite.ts`; the categorized and transfer validators live
+  there too, as one `requireEntryFields`.
 - **`domain/money`** gains `parseSignedAmount`; `parseAmount`, `formatAmount`,
   and `formatAmountInput` are unchanged.
 - **`domain/calendar`** already supplies `todayLocalDate` and
@@ -379,9 +381,9 @@ involved. Moving between months changes nothing on this screen.
    `createdAt = new Date().toISOString()`, trimmed name, validated type.
 3. Inside one `rw` transaction over `accounts` and `entries`:
    - `accounts.add(account)`;
-   - if `openingBalanceMinor !== undefined`, `insertEntry({ id:
-     crypto.randomUUID(), kind: 'opening', date: openingDateFor(account),
-     amountMinor: openingBalanceMinor, accountId: account.id })`.
+   - if `openingBalanceMinor !== undefined`, `createEntry({ kind: 'opening',
+     date: openingDateFor(account), amountMinor: openingBalanceMinor,
+     accountId: account.id })`.
 4. Return the account.
 
 An omitted opening writes no entry, preserving the existing test that adding
@@ -399,7 +401,7 @@ exist or neither does.
      `kind === 'opening' && accountId === accountId`, ordered by `id`
      ascending.
    - If `amountMinor === null`, delete every kept opening and return.
-   - If none exist, `insertEntry` one opening dated `openingDateFor(account)`.
+   - If none exist, `createEntry` one opening dated `openingDateFor(account)`.
    - If one or more exist, update the first kept entry's `amountMinor` and
      keep its `id` and `date`; delete any extras. This is what makes a
      hand-edited backup with duplicate openings collapse to one on the next
@@ -415,9 +417,11 @@ exist or neither does.
 ```ts
 function openingDateFor(account: Account): LocalDate {
   const created = new Date(account.createdAt);
-  return Number.isNaN(created.getTime())
-    ? todayLocalDate()
-    : todayLocalDate(created);
+  if (Number.isNaN(created.getTime())) {
+    return todayLocalDate();
+  }
+  const date = todayLocalDate(created);
+  return isValidLocalDate(date) ? date : todayLocalDate();
 }
 ```
 
@@ -490,14 +494,15 @@ The inline form, revealed in the row like the existing rename form:
 - Hint, credit: "What the card owed before you started logging. Use a minus
   if it was in credit."
 - Input: text, `inputMode="decimal"`, prefilled with
-  `formatAmountInput(presentedOpening(row), exponent)`, where
-  `presentedOpening` is `-openingBalanceMinor` for credit and
-  `openingBalanceMinor` otherwise.
-- Save: an empty input is an error ("Enter a starting amount, or clear it."),
-  not a silent clear. A non-empty input is parsed with `parseSignedAmount`;
-  invalid → the same error. The parsed presentation value is converted back
-  to ledger-signed (`-parsed` for credit, `parsed` otherwise) and passed to
-  `setOpeningBalance`.
+  `formatAmountInput(presentedAmount(type, openingBalanceMinor), exponent)`,
+  where `presentedAmount` is `-ledgerSigned` for credit and `ledgerSigned`
+  otherwise.
+- Save: an empty input is an error, not a silent clear — "Enter a starting
+  amount, or clear it." when `hasOpeningBalance`, otherwise "Enter a starting
+  amount." A non-empty input is parsed with `parseSignedAmount`; invalid →
+  "Enter a valid starting amount." (the add-form wording). The parsed
+  presentation value is converted back to ledger-signed (`-parsed` for credit,
+  `parsed` otherwise) and passed to `setOpeningBalance`.
 - Clear: shown only when `hasOpeningBalance`; calls
   `setOpeningBalance(id, null)`.
 - Cancel: closes the form without writing.

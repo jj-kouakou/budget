@@ -7,7 +7,7 @@ import { BudgetDatabase } from '../../data/db';
 import { createLedger } from '../../data/ledger';
 import type { Ledger } from '../../data/ledger';
 import { accountWithTypeLabel } from '../labels';
-import { IncomeEditorScreen } from './IncomeEditorScreen';
+import { EntryEditorScreen } from './EntryEditorScreen';
 
 let db: BudgetDatabase;
 let ledger: Ledger;
@@ -35,7 +35,7 @@ afterEach(async () => {
 });
 
 async function renderEditor(entryId = entry.id) {
-  render(<IncomeEditorScreen ledger={ledger} entryId={entryId} />);
+  render(<EntryEditorScreen ledger={ledger} entryId={entryId} />);
   await screen.findByRole('heading', { name: 'Correct income' });
 }
 
@@ -141,18 +141,18 @@ describe('IncomeEditorScreen', () => {
   });
 
   it('shows not-found for a stale id', async () => {
-    render(<IncomeEditorScreen ledger={ledger} entryId="missing" />);
+    render(<EntryEditorScreen ledger={ledger} entryId="missing" />);
 
     expect(
-      await screen.findByRole('heading', { name: 'Income not found' }),
+      await screen.findByRole('heading', { name: 'Entry not found' }),
     ).toBeInTheDocument();
-    expect(screen.getByText('This income no longer exists.')).toBeInTheDocument();
+    expect(screen.getByText('This entry no longer exists.')).toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: 'Back to income' }),
+      screen.getByRole('button', { name: 'Go home' }),
     ).toBeInTheDocument();
   });
 
-  it('shows not-found for an expense id', async () => {
+  it('dispatches an expense id to the expense editor', async () => {
     const expense = await ledger.addExpense({
       amountMinor: 100,
       categoryId: 'cat_groceries',
@@ -160,10 +160,10 @@ describe('IncomeEditorScreen', () => {
       date: '2026-11-02',
     });
 
-    render(<IncomeEditorScreen ledger={ledger} entryId={expense.id} />);
+    render(<EntryEditorScreen ledger={ledger} entryId={expense.id} />);
 
     expect(
-      await screen.findByRole('heading', { name: 'Income not found' }),
+      await screen.findByRole('heading', { name: 'Correct expense' }),
     ).toBeInTheDocument();
   });
 

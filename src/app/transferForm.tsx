@@ -1,34 +1,7 @@
 import type { Account } from '../domain/types';
-import type { LedgerErrorCode } from '../data/ledger';
 import { ChoiceGroup } from './choiceGroup';
+import type { EntryFieldErrors } from './entryFieldErrors';
 import { accountWithTypeLabel } from './labels';
-
-export interface TransferFieldErrors {
-  amount?: string;
-  account?: string;
-  toAccount?: string;
-  date?: string;
-  form?: string;
-}
-
-export function transferFieldErrors(
-  code: LedgerErrorCode,
-): TransferFieldErrors | null {
-  switch (code) {
-    case 'invalid-amount':
-      return { amount: 'Enter an amount greater than zero.' };
-    case 'invalid-date':
-      return { date: 'Choose a valid date.' };
-    case 'unknown-account':
-      return { account: 'That account no longer exists. Choose another.' };
-    case 'unknown-to-account':
-      return { toAccount: 'That account no longer exists. Choose another.' };
-    case 'same-transfer-account':
-      return { form: 'Choose two different accounts.' };
-    default:
-      return null;
-  }
-}
 
 export function TransferFields({
   idPrefix,
@@ -54,8 +27,8 @@ export function TransferFields({
   date: string;
   onDateChange: (value: string) => void;
   accounts: Account[];
-  errors: TransferFieldErrors;
-  onClearError: (field: keyof TransferFieldErrors) => void;
+  errors: EntryFieldErrors;
+  onClearError: (field: keyof EntryFieldErrors) => void;
 }) {
   const accountOptions = accounts.map((account) => ({
     id: account.id,

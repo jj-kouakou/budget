@@ -45,7 +45,7 @@ function money(amountMinor: number): string {
 }
 
 async function openEditor(entryId: string) {
-  window.location.hash = `#/transfers/${entryId}`;
+  window.location.hash = `#/entry/${entryId}`;
   render(<App ledger={ledger} />);
   await screen.findByRole('heading', { name: 'Correct transfer' });
   return userEvent.setup();
@@ -77,7 +77,7 @@ describe('TransferEditorScreen', () => {
     expect(
       await screen.findByRole('heading', { name: 'Correct transfer' }),
     ).toBeInTheDocument();
-    expect(window.location.hash).toBe(`#/transfers/${entry.id}`);
+    expect(window.location.hash).toBe(`#/entry/${entry.id}`);
     expect(screen.getByLabelText('Amount')).toHaveValue('240.00');
     expect(screen.getByLabelText('Date')).toHaveValue('2026-11-02');
     expect(
@@ -159,29 +159,29 @@ describe('TransferEditorScreen', () => {
   });
 
   it('renders not-found for a stale id', async () => {
-    window.location.hash = '#/transfers/missing';
+    window.location.hash = '#/entry/missing';
     render(<App ledger={ledger} />);
 
     expect(
-      await screen.findByRole('heading', { name: 'Transfer not found' }),
+      await screen.findByRole('heading', { name: 'Entry not found' }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: 'Back to transfers' }),
+      screen.getByRole('button', { name: 'Go home' }),
     ).toBeInTheDocument();
   });
 
-  it('renders not-found for an expense id', async () => {
+  it('dispatches an expense id to the expense editor', async () => {
     const expense = await ledger.addExpense({
       amountMinor: 1000,
       categoryId: 'cat_groceries',
       accountId: checking.id,
       date: '2026-11-02',
     });
-    window.location.hash = `#/transfers/${expense.id}`;
+    window.location.hash = `#/entry/${expense.id}`;
     render(<App ledger={ledger} />);
 
     expect(
-      await screen.findByRole('heading', { name: 'Transfer not found' }),
+      await screen.findByRole('heading', { name: 'Correct expense' }),
     ).toBeInTheDocument();
   });
 

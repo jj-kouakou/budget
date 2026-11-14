@@ -58,7 +58,7 @@ function TransferRows({
               type="button"
               aria-label={`Transfer from ${sourceLabel} to ${destinationLabel}, ${amount}, ${row.date}`}
               onClick={() =>
-                navigate({ name: 'transfer', entryId: row.id })
+                navigate({ name: 'entry', entryId: row.id })
               }
             >
               <span className="transfer-route">
